@@ -23,6 +23,7 @@ import { AgenticLoop, type LoopEvent } from "./loop/AgenticLoop.js";
 import { installSignalHandlers, onShutdown } from "./util/lifecycle.js";
 import { resolveConfig, describeConfig } from "./util/config.js";
 import { loadProjectContext, formatContextForPrompt } from "./util/projectContext.js";
+import { probeLlamaServer, writeStartupError } from "./util/startup.js";
 
 const PROGRESS_TOOLS = new Set(["run_shell", "run_build", "run_tests"]);
 const MAX_PROGRESS_LINES_VISIBLE = 12; // collapse longer streams
@@ -467,10 +468,25 @@ let config: ReturnType<typeof resolveConfig>;
 try {
   config = resolveConfig();
 } catch (e: unknown) {
-  process.stderr.write(
-    `Configuration error:\n${e instanceof Error ? e.message : String(e)}\n`,
-  );
+  writeStartupError("Configuration error", [
+    e instanceof Error ? e.message : String(e),
+  ]);
   process.exit(2);
+}
+
+// Pre-flight: llama-server reachability. Don't abort on failure — the
+// user might know the server is starting up — but warn loudly so they
+// see it before the first turn fails.
+const llamaErr = await probeLlamaServer(config.baseURL);
+if (llamaErr !== null) {
+  writeStartupError("llama-server probe failed (continuing)", [
+    llamaErr,
+    "",
+    "DevMindShell will continue starting, but the first LLM turn will fail",
+    "until the server is reachable. Check that ik_llama.cpp is running and",
+    "DEVMIND_BASE_URL points at the right endpoint.",
+    `Current endpoint: ${config.baseURL}`,
+  ]);
 }
 
 const cwd = process.cwd();
@@ -487,11 +503,16 @@ try {
   await mcp.connect(config.mcpServerPath, cwd);
   tools = await mcp.listTools();
 } catch (e: unknown) {
-  process.stderr.write(
-    `Failed to connect to McpServer at ${config.mcpServerPath}\n` +
-      `Working directory: ${cwd}\n` +
-      `Error: ${e instanceof Error ? e.message : String(e)}\n`,
-  );
+  writeStartupError("Failed to connect to McpServer", [
+    `path: ${config.mcpServerPath}`,
+    `cwd:  ${cwd}`,
+    "",
+    e instanceof Error ? `${e.constructor.name}: ${e.message}` : String(e),
+    "",
+    "Verify the McpServer.exe path resolves correctly:",
+    "  - Set DEVMIND_MCP_SERVER_PATH=<absolute path>",
+    "  - Or build the DevMind sibling repo (Release or Debug, net8.0)",
+  ]);
   process.exit(1);
 }
 
