@@ -1,4 +1,4 @@
-// File: src/index.tsx  v4.2
+// File: src/index.tsx  v4.3
 // Copyright (c) iOnline Consulting LLC. All rights reserved.
 //
 // Phase C interactive shell: agentic loop with tool dispatch.
@@ -21,10 +21,17 @@ import { McpClient, type ToolInfo } from "./mcp/McpClient.js";
 import { StreamingClient } from "./llm/StreamingClient.js";
 import { AgenticLoop, type LoopEvent } from "./loop/AgenticLoop.js";
 import { installSignalHandlers, onShutdown } from "./util/lifecycle.js";
-import { resolveConfig, describeConfig } from "./util/config.js";
-import { loadProjectContext, formatContextForPrompt } from "./util/projectContext.js";
+import { resolveConfig, describeConfig, type Config } from "./util/config.js";
+import { loadProjectContext, type LoadedContextFile } from "./util/projectContext.js";
+import { assembleSystemPrompt } from "./util/systemPrompt.js";
 import { probeLlamaServer, writeStartupError } from "./util/startup.js";
 import { theme } from "./ui/theme.js";
+import {
+  dispatchSlashCommand,
+  isSlashCommand,
+  type CommandContext,
+} from "./commands/registry.js";
+import { registerBuiltinCommands } from "./commands/builtins.js";
 
 const PROGRESS_TOOLS = new Set(["run_shell", "run_build", "run_tests"]);
 const MAX_PROGRESS_LINES_VISIBLE = 12; // collapse longer streams
@@ -41,7 +48,8 @@ type ToolCallEntry = {
   status: "dispatching" | "running" | "done";
 };
 
-type CompletedTurn = {
+type CompletedAgenticTurn = {
+  kind: "agentic";
   id: number;
   userText: string;
   reasoning: string;
@@ -51,6 +59,16 @@ type CompletedTurn = {
   doneSummary: string | undefined;
   errorMessage: string | undefined;
 };
+
+type CompletedCommandTurn = {
+  kind: "command";
+  id: number;
+  userText: string;
+  resultText: string;
+  isError: boolean;
+};
+
+type CompletedTurn = CompletedAgenticTurn | CompletedCommandTurn;
 
 type ActiveTurnState = {
   userText: string;
@@ -151,7 +169,7 @@ function ToolCallView({ call, isActive }: { call: ToolCallEntry; isActive: boole
   );
 }
 
-function CompletedTurnView({ turn, showReasoning }: { turn: CompletedTurn; showReasoning: boolean }) {
+function CompletedAgenticTurnView({ turn, showReasoning }: { turn: CompletedAgenticTurn; showReasoning: boolean }) {
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box>
@@ -175,6 +193,28 @@ function CompletedTurnView({ turn, showReasoning }: { turn: CompletedTurn; showR
       )}
     </Box>
   );
+}
+
+function CompletedCommandTurnView({ turn }: { turn: CompletedCommandTurn }) {
+  // Slash-command result. Echo the typed command, then the result body.
+  // Errors render in red; successes in normal foreground. No reasoning,
+  // no tool calls, no done markers — commands are local-only operations.
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      <Box>
+        <Text color={theme.input}>{"> "}</Text>
+        <Text>{turn.userText}</Text>
+      </Box>
+      <Text color={turn.isError ? theme.error : theme.normal}>{turn.resultText}</Text>
+    </Box>
+  );
+}
+
+function CompletedTurnView({ turn, showReasoning }: { turn: CompletedTurn; showReasoning: boolean }) {
+  if (turn.kind === "command") {
+    return <CompletedCommandTurnView turn={turn} />;
+  }
+  return <CompletedAgenticTurnView turn={turn} showReasoning={showReasoning} />;
 }
 
 function ActiveTurn({ turn, showReasoning }: { turn: ActiveTurnState; showReasoning: boolean }) {
@@ -296,12 +336,16 @@ function App({
   loop,
   toolsCount,
   banner,
-  showReasoning,
+  initialConfig,
+  cwd,
+  projectContext,
 }: {
   loop: AgenticLoop;
   toolsCount: number;
   banner: string[];
-  showReasoning: boolean;
+  initialConfig: Config;
+  cwd: string;
+  projectContext: LoadedContextFile[];
 }) {
   const { exit } = useApp();
   const [phase, setPhase] = useState<Phase>("input");
@@ -310,13 +354,29 @@ function App({
   const [active, setActive] = useState<ActiveTurnState | null>(null);
   const [errorText, setErrorText] = useState<string>("");
   const [elapsedMs, setElapsedMs] = useState(0);
+  // Runtime config state. Slash commands mutate this via setConfig in
+  // the CommandContext; persistence to shell.json happens inside the
+  // handler. See src/commands/builtins.ts.
+  const [config, setConfig] = useState<Config>(initialConfig);
+  // Latest config in a ref so closures (startTurn, command context) read
+  // the current value without re-binding. React state alone would close
+  // over a stale config inside the async runTurn loop.
+  const configRef = useRef(config);
+  useEffect(() => {
+    configRef.current = config;
+  }, [config]);
   const abortRef = useRef<AbortController | null>(null);
   const turnIdRef = useRef(0);
 
   useInput((char, key) => {
     if (phase === "input") {
       if (key.return && !key.shift) {
-        if (buffer.trim().length === 0) return;
+        const text = buffer.trim();
+        if (text.length === 0) return;
+        if (isSlashCommand(text)) {
+          void runSlashCommand(text);
+          return;
+        }
         startTurn(buffer);
         return;
       }
@@ -376,13 +436,18 @@ function App({
 
     const abort = new AbortController();
     abortRef.current = abort;
+    // Capture the current depthCap at the moment the turn starts. Mutations
+    // mid-turn don't change the in-flight cap (matches the user's mental
+    // model: setting a cap should affect the next turn, not the running one).
+    const depthCap = configRef.current.depthCap;
 
     void (async () => {
       try {
-        for await (const ev of loop.runTurn(userText, { signal: abort.signal })) {
+        for await (const ev of loop.runTurn(userText, { signal: abort.signal, depthCap })) {
           cur = applyEvent(cur, ev);
           if (ev.type === "turn_complete") {
-            const completedTurn: CompletedTurn = {
+            const completedTurn: CompletedAgenticTurn = {
+              kind: "agentic",
               id: ++turnIdRef.current,
               userText,
               reasoning: cur.reasoning,
@@ -414,6 +479,40 @@ function App({
     })();
   }
 
+  async function runSlashCommand(userText: string) {
+    setBuffer("");
+    // Build the command context at dispatch time so handlers see live
+    // state. setConfig writes through to React; resetConversation clears
+    // both the rendered turn list and the loop's internal message array.
+    const ctx: CommandContext = {
+      config: configRef.current,
+      setConfig: (next) => {
+        configRef.current = next;
+        setConfig(next);
+      },
+      resetConversation: () => {
+        setCompleted([]);
+        loop.resetHistory();
+      },
+      getSystemPrompt: () =>
+        assembleSystemPrompt({
+          cwd,
+          toolCount: toolsCount,
+          config: configRef.current,
+          projectContext,
+        }),
+    };
+    const result = await dispatchSlashCommand(userText, ctx);
+    const completedTurn: CompletedCommandTurn = {
+      kind: "command",
+      id: ++turnIdRef.current,
+      userText,
+      resultText: result.message,
+      isError: result.isError === true,
+    };
+    setCompleted((c) => [...c, completedTurn]);
+  }
+
   return (
     <Box flexDirection="column">
       {completed.length === 0 && active === null && (
@@ -429,10 +528,10 @@ function App({
       )}
 
       <Static items={completed}>
-        {(turn) => <CompletedTurnView key={turn.id} turn={turn} showReasoning={showReasoning} />}
+        {(turn) => <CompletedTurnView key={turn.id} turn={turn} showReasoning={config.showReasoning} />}
       </Static>
 
-      {active !== null && <ActiveTurn turn={active} showReasoning={showReasoning} />}
+      {active !== null && <ActiveTurn turn={active} showReasoning={config.showReasoning} />}
 
       {phase === "error" && (
         <Box marginBottom={1}>
@@ -441,7 +540,7 @@ function App({
       )}
 
       <InputBox buffer={buffer} active={phase === "input"} />
-      <StatusBar phase={phase} active={active} elapsedMs={elapsedMs} toolsCount={toolsCount} showReasoning={showReasoning} />
+      <StatusBar phase={phase} active={active} elapsedMs={elapsedMs} toolsCount={toolsCount} showReasoning={config.showReasoning} />
     </Box>
   );
 }
@@ -554,14 +653,20 @@ const streaming = new StreamingClient({
 });
 
 const projectContext = loadProjectContext(cwd);
-const SYSTEM_PROMPT =
-  `You are DevMindShell, a coding assistant running in a terminal. ` +
-  `Working directory: ${cwd.replace(/\\/g, "/")}. ` +
-  `You have ${tools.length} tools available; use them to read, search, and modify files in the working directory. ` +
-  `When you have completed the user's task, call task_done with a brief summary. ` +
-  `Always read files before patching them. Use list_files or find_in_files for discovery — never assume a path.` +
-  (config.behavioralRules ? `\n\n${config.behavioralRules}` : "") +
-  formatContextForPrompt(projectContext);
+// Initial system prompt assembly. Slash commands that mutate config
+// (e.g. /reasoning) do not currently affect any system-prompt-bearing
+// field, so the loop's captured prompt remains correct for the session.
+// /system_prompt re-assembles fresh from runtime config on every call,
+// independent of this snapshot.
+const SYSTEM_PROMPT = assembleSystemPrompt({
+  cwd,
+  toolCount: tools.length,
+  config,
+  projectContext,
+});
+
+// Register the five built-in slash commands with the registry. Idempotent.
+registerBuiltinCommands();
 
 const loop = new AgenticLoop({
   streaming,
@@ -569,6 +674,7 @@ const loop = new AgenticLoop({
   mcpTools: tools,
   systemPrompt: SYSTEM_PROMPT,
   toolTimeoutMs: config.toolTimeoutMs,
+  depthCap: config.depthCap,
 });
 
 const banner = describeConfig(config).split("\n");
@@ -582,7 +688,14 @@ if (projectContext.length > 0) {
   banner.push(`context:     (no DevMind.md / CLAUDE.md / AGENTS.md found in cwd)`);
 }
 const { waitUntilExit } = render(
-  <App loop={loop} toolsCount={tools.length} banner={banner} showReasoning={config.showReasoning} />,
+  <App
+    loop={loop}
+    toolsCount={tools.length}
+    banner={banner}
+    initialConfig={config}
+    cwd={cwd}
+    projectContext={projectContext}
+  />,
 );
 await waitUntilExit();
 // Normal Ink exit path: run shutdown steps too (so McpServer disconnects).
