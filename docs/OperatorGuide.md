@@ -4,7 +4,7 @@ project: DevMindShell
 stage: 11
 title: DevMindShell Operator Guide
 verified_date: "2026-05-06"
-last_updated: "2026-05-08"
+last_updated: "2026-05-09"
 revalidate_after: "2026-08-06"
 tech_versions:
   bun: "1.3.13"
@@ -208,15 +208,17 @@ Rendered as the bottom line of the Ink UI (`<StatusBar>` component, `src/index.t
 
 | Display | Condition | Meaning |
 |---------|-----------|---------|
-| `○ Ready` | idle | Waiting for input |
-| `■ Generating...` | streaming; content tokens arriving | LLM producing response text |
-| `⠋ Thinking...` | streaming; reasoning phase; `showReasoning=false` | Braille spinner (80ms/frame) + orange text; reasoning tokens arriving but hidden. Transitions to `■ Generating...` once content tokens start. |
-| `■ Running: <name>` | streaming; tool call in flight | MCP tool dispatched and executing |
-| `✗ Error` | error phase | Unrecoverable error in current turn |
+| `○ Ready` | idle | Waiting for input; static `○` |
+| `⠋ Generating...` | streaming; content tokens arriving | Braille spinner + LLM producing response |
+| `⠋ Thinking...` | streaming; reasoning phase; `showReasoning=false` | Spinner + orange text; reasoning tokens arriving but hidden. Transitions to `⠋ Generating...` once content tokens start. |
+| `⠋ Running: <name>` | streaming; tool call in flight | Spinner + MCP tool name |
+| `✗ Error` | error phase | Unrecoverable error in current turn; static |
 
-**Colors**: `○` uses `success` (`#4EC94E`); `■` uses `pending` (`#DCDCAA`); spinner character uses `normal` (`#CCCCCC`); `Thinking...` text uses `thinkingActive` (`#E07A0C`); `✗ Error` uses `error` (`#F44747`). See §10 for full palette.
+**Spinner**: The leading `⠋` in all in-progress states is a Braille spinner cycling through `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏` at 80ms per frame, rendered in `normal` color (`#CCCCCC`). Multiple simultaneous spinner instances (e.g., rare mid-transition frames) have independent intervals. `○`, `[Cancelled]`, and `✗ Error` are static characters — no spinner.
 
-**Note**: `showReasoning=true` (default) — the `⠋ Thinking...` state never appears. Both the reasoning phase and the content phase show `■ Generating...`.
+**Colors**: `○` uses `success` (`#4EC94E`); ` Generating...` and ` Running:` text use `pending` (`#DCDCAA`); spinner character uses `normal` (`#CCCCCC`); `Thinking...` text uses `thinkingActive` (`#E07A0C`) when `showReasoning=false` only; `✗ Error` uses `error` (`#F44747`). See §10 for full palette.
+
+**Note**: `showReasoning=true` (default) — the `⠋ Thinking...` orange variant never appears. The reasoning phase and content phase both show `⠋ Generating...`.
 
 ---
 
