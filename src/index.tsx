@@ -1,4 +1,4 @@
-// File: src/index.tsx  v4.1
+// File: src/index.tsx  v4.2
 // Copyright (c) iOnline Consulting LLC. All rights reserved.
 //
 // Phase C interactive shell: agentic loop with tool dispatch.
@@ -67,12 +67,14 @@ function ReasoningBlock({
   text,
   expanded,
   streaming,
+  showReasoning,
 }: {
   text: string;
   expanded: boolean;
   streaming: boolean;
+  showReasoning: boolean;
 }) {
-  if (text.length === 0) return null;
+  if (!showReasoning || text.length === 0) return null;
   const approxTokens = Math.ceil(text.length / 4);
   const arrow = expanded ? "▼" : "▶";
   const header = streaming
@@ -149,14 +151,14 @@ function ToolCallView({ call, isActive }: { call: ToolCallEntry; isActive: boole
   );
 }
 
-function CompletedTurnView({ turn }: { turn: CompletedTurn }) {
+function CompletedTurnView({ turn, showReasoning }: { turn: CompletedTurn; showReasoning: boolean }) {
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box>
         <Text color={theme.input}>{"> "}</Text>
         <Text>{turn.userText}</Text>
       </Box>
-      <ReasoningBlock text={turn.reasoning} expanded={false} streaming={false} />
+      <ReasoningBlock text={turn.reasoning} expanded={false} streaming={false} showReasoning={showReasoning} />
       {turn.text.length > 0 && <Text>{turn.text}</Text>}
       {turn.toolCalls.map((c) => (
         <ToolCallView key={c.id} call={c} isActive={false} />
@@ -175,7 +177,7 @@ function CompletedTurnView({ turn }: { turn: CompletedTurn }) {
   );
 }
 
-function ActiveTurn({ turn }: { turn: ActiveTurnState }) {
+function ActiveTurn({ turn, showReasoning }: { turn: ActiveTurnState; showReasoning: boolean }) {
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box>
@@ -186,6 +188,7 @@ function ActiveTurn({ turn }: { turn: ActiveTurnState }) {
         text={turn.reasoning}
         expanded={true}
         streaming={turn.text.length === 0 && turn.toolCalls.length === 0}
+        showReasoning={showReasoning}
       />
       {turn.text.length > 0 && <Text>{turn.text}</Text>}
       {turn.toolCalls.map((c, i) => (
@@ -215,16 +218,34 @@ function InputBox({ buffer, active }: { buffer: string; active: boolean }) {
   );
 }
 
+const BRAILLE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+function ThinkingSpinner() {
+  const [frame, setFrame] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setFrame((f) => (f + 1) % BRAILLE_FRAMES.length), 80);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <Text>
+      <Text color={theme.normal}>{BRAILLE_FRAMES[frame]} </Text>
+      <Text color={theme.thinkingActive}>Thinking...</Text>
+    </Text>
+  );
+}
+
 function StatusBar({
   phase,
   active,
   elapsedMs,
   toolsCount,
+  showReasoning,
 }: {
   phase: Phase;
   active: ActiveTurnState | null;
   elapsedMs: number;
   toolsCount: number;
+  showReasoning: boolean;
 }) {
   if (phase === "streaming" && active) {
     const lastCall = active.toolCalls[active.toolCalls.length - 1];
@@ -239,6 +260,14 @@ function StatusBar({
           </Text>
         </Text>
       );
+    }
+    // Reasoning phase: reasoning tokens arriving, no content or tool calls yet.
+    const isReasoningPhase =
+      active.reasoning.length > 0 &&
+      active.text.length === 0 &&
+      active.toolCalls.length === 0;
+    if (!showReasoning && isReasoningPhase) {
+      return <ThinkingSpinner />;
     }
     return (
       <Text>
@@ -268,10 +297,12 @@ function App({
   loop,
   toolsCount,
   banner,
+  showReasoning,
 }: {
   loop: AgenticLoop;
   toolsCount: number;
   banner: string[];
+  showReasoning: boolean;
 }) {
   const { exit } = useApp();
   const [phase, setPhase] = useState<Phase>("input");
@@ -399,10 +430,10 @@ function App({
       )}
 
       <Static items={completed}>
-        {(turn) => <CompletedTurnView key={turn.id} turn={turn} />}
+        {(turn) => <CompletedTurnView key={turn.id} turn={turn} showReasoning={showReasoning} />}
       </Static>
 
-      {active !== null && <ActiveTurn turn={active} />}
+      {active !== null && <ActiveTurn turn={active} showReasoning={showReasoning} />}
 
       {phase === "error" && (
         <Box marginBottom={1}>
@@ -411,7 +442,7 @@ function App({
       )}
 
       <InputBox buffer={buffer} active={phase === "input"} />
-      <StatusBar phase={phase} active={active} elapsedMs={elapsedMs} toolsCount={toolsCount} />
+      <StatusBar phase={phase} active={active} elapsedMs={elapsedMs} toolsCount={toolsCount} showReasoning={showReasoning} />
     </Box>
   );
 }
@@ -552,7 +583,7 @@ if (projectContext.length > 0) {
   banner.push(`context:     (no DevMind.md / CLAUDE.md / AGENTS.md found in cwd)`);
 }
 const { waitUntilExit } = render(
-  <App loop={loop} toolsCount={tools.length} banner={banner} />,
+  <App loop={loop} toolsCount={tools.length} banner={banner} showReasoning={config.showReasoning} />,
 );
 await waitUntilExit();
 // Normal Ink exit path: run shutdown steps too (so McpServer disconnects).
