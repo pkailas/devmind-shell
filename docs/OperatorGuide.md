@@ -4,7 +4,7 @@ project: DevMindShell
 stage: 11
 title: DevMindShell Operator Guide
 verified_date: "2026-05-06"
-last_updated: "2026-05-09"
+last_updated: "2026-05-06"
 revalidate_after: "2026-08-06"
 tech_versions:
   bun: "1.3.13"
@@ -59,6 +59,7 @@ Priority over config file. All are optional; built-in defaults shown.
 | `DEVMIND_CONFIG_PATH` | *(platform default — see §3)* | Override config file location |
 | `DEVMIND_BEHAVIORAL_RULES` | `""` (empty) | Plain string appended to the system prompt before project-context files. Multi-line content: use the config file's `behavioralRules` field instead. |
 | `DEVMIND_SHOW_REASONING` | `"true"` | `"true"` / `"false"` (case-insensitive). When `false`, `<ReasoningBlock>` renders nothing and the status bar shows a Braille spinner + orange `Thinking...` during the reasoning phase instead of the standard `■ Generating...`. |
+| `DEVMIND_DEPTH_CAP` | `10` | Integer in 1–30. Maximum agentic rounds per turn before aborting with `depth_cap`. Out-of-range or non-integer values fall through to the file value or the built-in default. |
 
 **PowerShell set syntax**:
 ```powershell
@@ -92,7 +93,8 @@ All fields optional. Env vars override config file values.
   "mcpServerPath":    "C:/path/to/DevMind.McpServer.exe",
   "toolTimeoutMs":    30000,
   "behavioralRules":  "Always respond in English. Prefer minimal diffs.",
-  "showReasoning":    true
+  "showReasoning":    true,
+  "depthCap":         10
 }
 ```
 
@@ -105,6 +107,7 @@ All fields optional. Env vars override config file values.
 | `toolTimeoutMs` | number | `DEVMIND_TOOL_TIMEOUT_MS` |
 | `behavioralRules` | string | `DEVMIND_BEHAVIORAL_RULES` |
 | `showReasoning` | boolean | `DEVMIND_SHOW_REASONING` |
+| `depthCap` | number (integer 1–30) | `DEVMIND_DEPTH_CAP` |
 
 ---
 
@@ -216,13 +219,41 @@ Rendered as the bottom line of the Ink UI (`<StatusBar>` component, `src/index.t
 
 **Spinner**: The leading `⠋` in all in-progress states is a Braille spinner cycling through `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏` at 80ms per frame, rendered in `normal` color (`#CCCCCC`). Multiple simultaneous spinner instances (e.g., rare mid-transition frames) have independent intervals. `○`, `[Cancelled]`, and `✗ Error` are static characters — no spinner.
 
-**Colors**: `○` uses `success` (`#4EC94E`); ` Generating...` and ` Running:` text use `pending` (`#DCDCAA`); spinner character uses `normal` (`#CCCCCC`); `Thinking...` text uses `thinkingActive` (`#E07A0C`) when `showReasoning=false` only; `✗ Error` uses `error` (`#F44747`). See §10 for full palette.
+**Colors**: `○` uses `success` (`#4EC94E`); ` Generating...` and ` Running:` text use `pending` (`#DCDCAA`); spinner character uses `normal` (`#CCCCCC`); `Thinking...` text uses `thinkingActive` (`#E07A0C`) when `showReasoning=false` only; `✗ Error` uses `error` (`#F44747`). See §11 for full palette.
 
 **Note**: `showReasoning=true` (default) — the `⠋ Thinking...` orange variant never appears. The reasoning phase and content phase both show `⠋ Generating...`.
 
 ---
 
-## 9. Timeouts and Limits
+## 9. Slash Commands
+
+Input lines beginning with `/` are intercepted by the shell and never sent to the model. Commands run synchronously in the local process; they do not consume context tokens or trigger an agentic round.
+
+Source: `src/commands/registry.ts` (registry + dispatcher), `src/commands/builtins.ts` (handlers).
+
+### Available commands
+
+| Command | Effect | Persisted |
+|---------|--------|-----------|
+| `/reasoning on\|off` | Toggle `showReasoning` at runtime. UI updates immediately (reasoning hidden + orange `Thinking...` when off). | Yes — written to `shell.json` via atomic temp-file-then-rename. |
+| `/depth-cap` | Print the current depth cap. | — |
+| `/depth-cap N` | Set the agentic depth cap to `N` (integer in 1–30). Validation errors do not persist. | Yes — written to `shell.json`. |
+| `/clear` | Clear the rendered turn history and reset the `AgenticLoop` `_messages` array to system-prompt only. The conversation looks like a fresh launch. | No — session-only. |
+| `/system_prompt` | Print the assembled system prompt that the loop is currently sending. Re-assembled fresh from runtime config on every call, so it reflects any in-session mutations. | No — read-only diagnostic. |
+| `/help` | List all registered commands. Generated from the registry — new commands appear automatically. | No. |
+
+### Persistence
+
+- `/reasoning` and `/depth-cap N` write the field to `shell.json` immediately on success. The pattern is write-to-`<path>.tmp` → atomic `rename` to `shell.json`. A crash mid-write cannot corrupt the existing file.
+- `/clear`, `/system_prompt`, `/help`, and a no-arg `/depth-cap` make no file changes.
+
+### Errors
+
+Unknown commands (`/asdf`) and invalid arguments (e.g. `/depth-cap 99`) render as a red turn in the UI; the conversation history is unaffected.
+
+---
+
+## 10. Timeouts and Limits
 
 ### Timeouts
 
@@ -238,7 +269,7 @@ Rendered as the bottom line of the Ink UI (`<StatusBar>` component, `src/index.t
 
 | Limit | Value | Description |
 |-------|-------|-------------|
-| `DEPTH_CAP` | 10 | Max tool-dispatch rounds per user turn. Terminates with error message if exceeded. |
+| `DEPTH_CAP` | 10 | Max tool-dispatch rounds per user turn. Terminates with error message if exceeded. Configurable via `DEVMIND_DEPTH_CAP` env var, `depthCap` config field, or `/depth-cap N` slash command (range 1–30). |
 | Crash recovery | 1 retry | McpServer crash → auto-reconnect → retry tool once → abort turn on second crash |
 
 ### Context budget
@@ -265,7 +296,7 @@ Rendered as the bottom line of the Ink UI (`<StatusBar>` component, `src/index.t
 
 ---
 
-## 10. Color Theming
+## 11. Color Theming
 
 Source: `src/ui/theme.ts`. Hex values match the DevMind WPF VSIX palette.
 
@@ -284,7 +315,7 @@ Ink renders hex via ANSI Truecolor. Terminals without Truecolor support fall bac
 
 ---
 
-## 11. Logs and Diagnostics
+## 12. Logs and Diagnostics
 
 ### Startup error output
 
@@ -322,7 +353,7 @@ Run any script: `bun run scripts/<name>.ts`
 
 ---
 
-## 12. Common Errors and Resolutions
+## 13. Common Errors and Resolutions
 
 | Error | Cause | Resolution |
 |-------|-------|-----------|
