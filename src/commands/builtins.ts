@@ -92,6 +92,23 @@ async function systemPromptHandler(
   return { message: `${top}\n${prompt}\n${bot}` };
 }
 
+// ── /rules [text] ──────────────────────────────────────────────────────────
+
+async function rulesHandler(
+  args: string[],
+  ctx: CommandContext,
+): Promise<CommandResult> {
+  const rules = args[0] ?? "";
+  ctx.setConfig({ ...ctx.config, behavioralRules: rules });
+  await persistConfigField("behavioralRules", rules);
+  ctx.resetConversation();
+  return {
+    message: rules
+      ? `Behavioral rules updated. Conversation reset.`
+      : "Behavioral rules cleared. Conversation reset.",
+  };
+}
+
 // ── /help ───────────────────────────────────────────────────────────────────
 
 async function helpHandler(): Promise<CommandResult> {
@@ -139,6 +156,12 @@ export function registerBuiltinCommands(): void {
     "Display the assembled system prompt",
     "/system_prompt",
     systemPromptHandler,
+  );
+  registerCommand(
+    "/rules",
+    "Set behavioral rules (persisted) and reset conversation",
+    "/rules [text]",
+    rulesHandler,
   );
   registerCommand(
     "/help",

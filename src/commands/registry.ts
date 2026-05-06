@@ -88,10 +88,19 @@ export function listCommands(): RegisteredCommand[] {
 function parseInput(input: string): { name: string; args: string[] } | null {
   const trimmed = input.trim();
   if (!trimmed.startsWith("/")) return null;
-  const parts = trimmed.split(/\s+/);
-  const first = parts[0];
-  if (first === undefined) return null;
-  return { name: first, args: parts.slice(1) };
+
+  const firstWhitespaceIndex = trimmed.search(/\s/);
+  if (firstWhitespaceIndex === -1) {
+    return { name: trimmed, args: [] };
+  }
+
+  const name = trimmed.substring(0, firstWhitespaceIndex);
+  const rawArgs = trimmed.substring(firstWhitespaceIndex).trim();
+
+  return {
+    name,
+    args: rawArgs === "" ? [] : [rawArgs],
+  };
 }
 
 /**

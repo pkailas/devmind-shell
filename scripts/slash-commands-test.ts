@@ -1,4 +1,4 @@
-// File: scripts/slash-commands-test.ts  v1.0
+﻿// File: scripts/slash-commands-test.ts  v1.0
 // Copyright (c) iOnline Consulting LLC. All rights reserved.
 //
 // Headless test for the slash command framework. Exercises the registry,
@@ -76,6 +76,7 @@ console.log("=== /help ===");
   check("includes /depth-cap", r.message.includes("/depth-cap"));
   check("includes /clear", r.message.includes("/clear"));
   check("includes /system_prompt", r.message.includes("/system_prompt"));
+  check("includes /rules", r.message.includes("/rules"));
   check("includes /help", r.message.includes("/help"));
   check("not error", r.isError !== true);
 }
@@ -206,3 +207,33 @@ if (failed > 0) {
 }
 console.log("\nAll checks passed.");
 process.exit(0);
+
+console.log("\n=== /rules (non-empty, persists, resets) ===");
+{
+  const before = resetCount;
+  const rulesText = "Be concise.\nUse TypeScript.";
+  const r = await dispatchSlashCommand(`/rules ${rulesText}`, ctx);
+  check("success message", r.message === "Behavioral rules updated. Conversation reset.");
+  check("liveConfig.behavioralRules matches", liveConfig.behavioralRules === rulesText);
+  const persisted = readPersisted();
+  check("persisted rules match", persisted["behavioralRules"] === rulesText);
+  check("resetConversation called", resetCount === before + 1);
+}
+
+console.log("\n=== /rules (empty, clears, resets) ===");
+{
+  const before = resetCount;
+  const r = await dispatchSlashCommand("/rules", ctx);
+  check("success message", r.message === "Behavioral rules cleared. Conversation reset.");
+  check("liveConfig.behavioralRules empty", liveConfig.behavioralRules === "");
+  const persisted = readPersisted();
+  check("persisted rules empty", persisted["behavioralRules"] === "");
+  check("resetConversation called", resetCount === before + 1);
+}
+
+console.log("\n=== /rules (multi-line preservation) ===");
+{
+  const multiLine = "Line 1\nLine 2\nLine 3";
+  await dispatchSlashCommand(`/rules ${multiLine}`, ctx);
+  check("multi-line preserved", liveConfig.behavioralRules === multiLine);
+}

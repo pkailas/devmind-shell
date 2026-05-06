@@ -10,6 +10,14 @@
 // silently dropping the baseURL field and routing requests to api.openai.com.
 // See docs/Stage11-Tech-Reference.md §5 and the opencode #5674 case study.
 
+/**
+ * CompletionClient provides a non-streaming interface for interacting with an 
+ * OpenAI-compatible LLM endpoint (specifically ik_llama.cpp's llama-server).
+ * 
+ * Based on Phase A findings, this client is configured to handle Gemma 4 
+ * models which emit chain-of-thought reasoning via the `reasoning_content` 
+ * field in the response delta, separate from the final response content.
+ */
 import OpenAI from "openai";
 
 /** Gemma 4 in ik_llama.cpp emits chain-of-thought via delta.reasoning_content

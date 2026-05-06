@@ -241,10 +241,11 @@ Source: `src/commands/registry.ts` (registry + dispatcher), `src/commands/builti
 | `/clear` | Clear the rendered turn history and reset the `AgenticLoop` `_messages` array to system-prompt only. The conversation looks like a fresh launch. | No — session-only. |
 | `/system_prompt` | Print the assembled system prompt that the loop is currently sending. Re-assembled fresh from runtime config on every call, so it reflects any in-session mutations. | No — read-only diagnostic. |
 | `/help` | List all registered commands. Generated from the registry — new commands appear automatically. | No. |
+| `/rules` | Set behavioral rules for the model. `/rules` (no arg) clears rules. | Yes — written to `shell.json`. |
 
 ### Persistence
 
-- `/reasoning` and `/depth-cap N` write the field to `shell.json` immediately on success. The pattern is write-to-`<path>.tmp` → atomic `rename` to `shell.json`. A crash mid-write cannot corrupt the existing file.
+- `/reasoning`, `/depth-cap N`, and `/rules` write the field to `shell.json` immediately on success. The pattern is write-to-`<path>.tmp` → atomic `rename` to `shell.json`. A crash mid-write cannot corrupt the existing file.
 - `/clear`, `/system_prompt`, `/help`, and a no-arg `/depth-cap` make no file changes.
 
 ### Errors
