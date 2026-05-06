@@ -17,7 +17,13 @@ rag_ready: true
 
 # DevMindShell
 
-A terminal shell for [DevMind](https://github.com/pkailas/DevMind) — a TypeScript/Ink terminal application that:
+Owned by **iOnline Consulting LLC**. Companion repo to [DevMind](https://github.com/pkailas/DevMind).
+
+**Remotes**:
+- GitHub (public, primary): https://github.com/pkailas/devmind-shell
+- Synology NAS (private mirror): `pkailas@vard-nas:/volume1/GIT/devmind-shell.git`
+
+A TypeScript/Ink terminal application that:
 
 - Connects to `DevMind.McpServer.exe` over stdio as an MCP client
 - Talks to a locally hosted LLM (Gemma 4 31B via ik_llama.cpp's llama-server) using an OpenAI-compatible API
