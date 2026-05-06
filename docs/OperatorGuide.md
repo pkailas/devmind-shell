@@ -299,6 +299,13 @@ All McpServer diagnostics go to its own process stderr. Never mixed with MCP JSO
 | `scripts/timeout-test.ts` | Measures kill-to-throw latency for McpError -32001 |
 | `scripts/cycle-test.ts` | End-to-end read → patch → run cycle test; prints 5 "Done when" criteria |
 | `scripts/sse-gate.ts` | Raw SSE streaming verification against the llama-server endpoint |
+| `cancel-test.ts` | §9.1 cancel verification — measures lag of Esc/SIGINT during streaming |
+| `crash-test.ts` | §9.3 crash recovery — kills McpServer mid-call, verifies sync-throw + reconnect |
+| `context-test.ts` | Context window probe |
+| `static-stress.tsx` | §9.5 Static + high-frequency rendering stress test |
+| `loop-smoke.ts` | Agentic loop smoke test |
+| `progress-smoke.ts` | Progress streaming smoke test |
+| `streaming-smoke.ts` | Streaming smoke test |
 
 Run any script: `bun run scripts/<name>.ts`
 
@@ -320,4 +327,3 @@ Run any script: `bun run scripts/<name>.ts`
 | Streaming output appears only at end of tool call | Progress queue not draining (Phase C issue — fixed in `AgenticLoop.ts`) | Should not recur. If observed, check `PROGRESS_TOOLS` set in `src/loop/AgenticLoop.ts`. |
 | `bun run dev` exits immediately with no output | Ink initialization failure (typically a missing peer dependency) | Run `bun install`; verify `yoga-layout` (not `yoga-layout-prebuilt`) is present in `node_modules`. |
 | `powershell.exe` not found inside `run_shell` | McpServer subprocess PATH lacks System32 | Use PowerShell builtin cmdlets (e.g., `Get-Content`, `Start-Sleep`) or provide the full path (`C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`). |
-| TypeScript error on `FinishReason` type | Complex conditional type resolving to `never` (Phase C — fixed) | Ensure `AgenticLoop.ts` uses the explicit `type FinishReason = "stop" \| "length" \| "tool_calls" \| ...` union, not the conditional inference form. |
