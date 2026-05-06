@@ -248,7 +248,7 @@ function StatusBar({
     if (inToolDispatch && lastCall) {
       return (
         <Text>
-          <Text color={theme.pending}>■ Running: </Text>
+          <Spinner /><Text color={theme.pending}> Running: </Text>
           <Text>{lastCall.name}</Text>
           <Text dimColor>
             {" "}({(elapsedMs / 1000).toFixed(1)}s, round {active.currentRound})  [Esc to cancel]
@@ -270,7 +270,7 @@ function StatusBar({
     }
     return (
       <Text>
-        <Text color={theme.pending}>■ Generating... </Text>
+        <Spinner /><Text color={theme.pending}> Generating... </Text>
         <Text dimColor>
           ({(elapsedMs / 1000).toFixed(1)}s, round {active.currentRound})  [Esc to cancel]
         </Text>
