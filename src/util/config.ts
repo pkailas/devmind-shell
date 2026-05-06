@@ -1,4 +1,4 @@
-// File: src/util/config.ts  v1.2
+// File: src/util/config.ts  v1.3
 // Copyright (c) iOnline Consulting LLC. All rights reserved.
 //
 // Configuration resolution: env vars > config file > defaults.
@@ -33,6 +33,10 @@
 //                                whether <ReasoningBlock> renders in the UI
 //                                and activates the spinner status bar variant
 //                                when false (default "true")
+//   DEVMIND_DEPTH_CAP         — integer in 1..30; max agentic rounds per
+//                                turn before aborting with depth_cap.
+//                                Out-of-range or non-integer values fall
+//                                through to file/default (default 10)
 
 import { homedir, platform } from "os";
 import { join, resolve, dirname, isAbsolute } from "path";
@@ -43,6 +47,9 @@ const DEFAULT_BASE_URL = "http://10.0.0.15:8080/v1";
 const DEFAULT_API_KEY = "lm-studio";
 const DEFAULT_MODEL = "G:\\models\\GEMMA4\\google_gemma-4-31B-it-Q8_0.gguf";
 const DEFAULT_TOOL_TIMEOUT_MS = 30_000;
+const DEFAULT_DEPTH_CAP = 10;
+const DEPTH_CAP_MIN = 1;
+const DEPTH_CAP_MAX = 30;
 
 export type Config = {
   baseURL: string;
@@ -52,6 +59,7 @@ export type Config = {
   toolTimeoutMs: number;
   behavioralRules: string;
   showReasoning: boolean;
+  depthCap: number;
   configFileLoaded: string | null; // for diagnostics
 };
 
@@ -63,6 +71,7 @@ type ConfigFile = Partial<{
   toolTimeoutMs: number;
   behavioralRules: string;
   showReasoning: boolean;
+  depthCap: number;
 }>;
 
 /** Default config-file path for the current platform.
@@ -120,6 +129,7 @@ export function resolveConfig(): Config {
   );
   const behavioralRules = process.env.DEVMIND_BEHAVIORAL_RULES ?? file?.behavioralRules ?? "";
   const showReasoning = parseBooleanEnv(process.env.DEVMIND_SHOW_REASONING) ?? file?.showReasoning ?? true;
+  const depthCap = parseDepthCap(process.env.DEVMIND_DEPTH_CAP) ?? validateDepthCap(file?.depthCap) ?? DEFAULT_DEPTH_CAP;
 
   return {
     baseURL,
@@ -129,9 +139,30 @@ export function resolveConfig(): Config {
     toolTimeoutMs,
     behavioralRules,
     showReasoning,
+    depthCap,
     configFileLoaded: fileLoaded,
   };
 }
+
+/** Parse and validate DEVMIND_DEPTH_CAP. Returns the integer if valid, undefined otherwise. */
+function parseDepthCap(input: string | undefined): number | undefined {
+  if (input === undefined) return undefined;
+  const n = Number(input);
+  if (!Number.isFinite(n) || !Number.isInteger(n)) return undefined;
+  if (n < DEPTH_CAP_MIN || n > DEPTH_CAP_MAX) return undefined;
+  return n;
+}
+
+/** Validate a config-file depthCap value. Returns the integer if valid, undefined otherwise. */
+function validateDepthCap(input: number | undefined): number | undefined {
+  if (input === undefined) return undefined;
+  if (!Number.isFinite(input) || !Number.isInteger(input)) return undefined;
+  if (input < DEPTH_CAP_MIN || input > DEPTH_CAP_MAX) return undefined;
+  return input;
+}
+
+/** Public range for use by /depth-cap validation. */
+export const DEPTH_CAP_RANGE = { min: DEPTH_CAP_MIN, max: DEPTH_CAP_MAX } as const;
 
 function parseTimeoutMs(input: string | undefined): number {
   if (input === undefined) return DEFAULT_TOOL_TIMEOUT_MS;

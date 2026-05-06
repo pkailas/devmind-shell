@@ -1,4 +1,4 @@
-// File: src/loop/AgenticLoop.ts  v1.0
+// File: src/loop/AgenticLoop.ts  v1.1
 // Copyright (c) iOnline Consulting LLC. All rights reserved.
 //
 // Multi-round agentic loop: drives the streaming LLM, dispatches tool
@@ -31,10 +31,12 @@
 //     If reconnect or retry fails, the turn aborts with a clear
 //     error event. No retry loop (discovery §9.3 cap).
 //
-//   * Depth cap: 10 rounds per turn. Beyond that, the loop is
-//     probably stuck — emit depth_cap and exit. WPF VSIX uses 5;
+//   * Depth cap: default 10 rounds per turn. Beyond that, the loop
+//     is probably stuck — emit depth_cap and exit. WPF VSIX uses 5;
 //     I'm being more generous here since the shell user can also
-//     hit Esc.
+//     hit Esc. Configurable via constructor opt or per-turn opt
+//     (the runTurn override wins, so the slash-command path can
+//     mutate it at runtime without re-constructing the loop).
 //
 //   * No context-budget management. Phase D problem.
 
@@ -48,7 +50,7 @@ import { StreamingClient, type StreamEvent } from "../llm/StreamingClient.js";
 import type { McpClient, ToolInfo, ToolResult } from "../mcp/McpClient.js";
 import { trimContext, type TrimResult } from "./contextBudget.js";
 
-const DEPTH_CAP = 10;
+const DEFAULT_DEPTH_CAP = 10;
 
 const TASK_DONE_TOOL: ChatCompletionTool = {
   type: "function",
@@ -106,6 +108,7 @@ export class AgenticLoop {
   private readonly _systemPrompt: string;
 
   private readonly _toolTimeoutMs: number;
+  private readonly _defaultDepthCap: number;
 
   constructor(opts: {
     streaming: StreamingClient;
@@ -113,11 +116,13 @@ export class AgenticLoop {
     mcpTools: ToolInfo[];
     systemPrompt: string;
     toolTimeoutMs?: number;
+    depthCap?: number;
   }) {
     this._streaming = opts.streaming;
     this._mcp = opts.mcp;
     this._systemPrompt = opts.systemPrompt;
     this._toolTimeoutMs = opts.toolTimeoutMs ?? 30_000;
+    this._defaultDepthCap = opts.depthCap ?? DEFAULT_DEPTH_CAP;
     this._tools = [
       ...opts.mcpTools.map((t) => mcpToolToOpenAITool(t)),
       TASK_DONE_TOOL,
@@ -141,8 +146,9 @@ export class AgenticLoop {
    *  emits tool_calls → we dispatch → re-prompt → repeat). */
   async *runTurn(
     userText: string,
-    opts: { signal?: AbortSignal; contextWindowTokens?: number } = {},
+    opts: { signal?: AbortSignal; contextWindowTokens?: number; depthCap?: number } = {},
   ): AsyncIterable<LoopEvent> {
+    const depthCap = opts.depthCap ?? this._defaultDepthCap;
     // Trim oldest non-system messages if estimated tokens exceed
     // 80% (soft) or 95% (hard) of the configured context window.
     const trim = trimContext(this._messages, opts.contextWindowTokens);
@@ -152,7 +158,7 @@ export class AgenticLoop {
 
     this._messages.push({ role: "user", content: userText });
 
-    for (let round = 1; round <= DEPTH_CAP; round++) {
+    for (let round = 1; round <= depthCap; round++) {
       yield { type: "round_started", round };
 
       const dispatchedCalls: ChatCompletionMessageToolCall[] = [];
@@ -470,7 +476,7 @@ export class AgenticLoop {
     yield {
       type: "turn_complete",
       reason: "depth_cap",
-      errorMessage: `Reached ${DEPTH_CAP} agentic rounds without resolution; aborting turn.`,
+      errorMessage: `Reached ${depthCap} agentic rounds without resolution; aborting turn.`,
     };
   }
 }
