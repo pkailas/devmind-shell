@@ -22,6 +22,7 @@ import { StreamingClient } from "./llm/StreamingClient.js";
 import { AgenticLoop, type LoopEvent } from "./loop/AgenticLoop.js";
 import { installSignalHandlers, onShutdown } from "./util/lifecycle.js";
 import { resolveConfig, describeConfig } from "./util/config.js";
+import { loadProjectContext, formatContextForPrompt } from "./util/projectContext.js";
 
 const PROGRESS_TOOLS = new Set(["run_shell", "run_build", "run_tests"]);
 const MAX_PROGRESS_LINES_VISIBLE = 12; // collapse longer streams
@@ -495,12 +496,14 @@ const streaming = new StreamingClient({
   model: config.model,
 });
 
+const projectContext = loadProjectContext(cwd);
 const SYSTEM_PROMPT =
   `You are DevMindShell, a coding assistant running in a terminal. ` +
   `Working directory: ${cwd.replace(/\\/g, "/")}. ` +
   `You have ${tools.length} tools available; use them to read, search, and modify files in the working directory. ` +
   `When you have completed the user's task, call task_done with a brief summary. ` +
-  `Always read files before patching them. Use list_files or find_in_files for discovery — never assume a path.`;
+  `Always read files before patching them. Use list_files or find_in_files for discovery — never assume a path.` +
+  formatContextForPrompt(projectContext);
 
 const loop = new AgenticLoop({
   streaming,
@@ -510,6 +513,15 @@ const loop = new AgenticLoop({
 });
 
 const banner = describeConfig(config).split("\n");
+if (projectContext.length > 0) {
+  banner.push(
+    `context:     ${projectContext
+      .map((f, i) => (i === 0 ? f.filename : `+${f.filename}`))
+      .join(", ")}`,
+  );
+} else {
+  banner.push(`context:     (no DevMind.md / CLAUDE.md / AGENTS.md found in cwd)`);
+}
 const { waitUntilExit } = render(
   <App loop={loop} toolsCount={tools.length} banner={banner} />,
 );
