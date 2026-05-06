@@ -1,6 +1,6 @@
 {
   "name": "devmind-shell",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Terminal shell for DevMind — connects to DevMind.McpServer via MCP stdio transport",
   "type": "module",
   "engines": {
