@@ -237,7 +237,7 @@ Source: `src/commands/registry.ts` (registry + dispatcher), `src/commands/builti
 |---------|--------|-----------|
 | `/reasoning on\|off` | Toggle `showReasoning` at runtime. UI updates immediately (reasoning hidden + orange `Thinking...` when off). | Yes — written to `shell.json` via atomic temp-file-then-rename. |
 | `/depth-cap` | Print the current depth cap. | — |
-| `/depth-cap N` | Set the agentic depth cap to `N` (integer in 1–30). Validation errors do not persist. | Yes — written to `shell.json`. |
+| `/depth-cap N` | Set the agentic depth cap to `N` (integer in 1–100). Validation errors do not persist. | Yes — written to `shell.json`. |
 | `/clear` | Clear the rendered turn history and reset the `AgenticLoop` `_messages` array to system-prompt only. The conversation looks like a fresh launch. | No — session-only. |
 | `/system_prompt` | Print the assembled system prompt that the loop is currently sending. Re-assembled fresh from runtime config on every call, so it reflects any in-session mutations. | No — read-only diagnostic. |
 | `/help` | List all registered commands. Generated from the registry — new commands appear automatically. | No. |
@@ -250,7 +250,7 @@ Source: `src/commands/registry.ts` (registry + dispatcher), `src/commands/builti
 
 ### Errors
 
-Unknown commands (`/asdf`) and invalid arguments (e.g. `/depth-cap 99`) render as a red turn in the UI; the conversation history is unaffected.
+Unknown commands (`/asdf`) and invalid arguments (e.g. `/depth-cap 101`) render as a red turn in the UI; the conversation history is unaffected.
 
 ---
 
@@ -270,7 +270,7 @@ Unknown commands (`/asdf`) and invalid arguments (e.g. `/depth-cap 99`) render a
 
 | Limit | Value | Description |
 |-------|-------|-------------|
-| `DEPTH_CAP` | 10 | Max tool-dispatch rounds per user turn. Terminates with error message if exceeded. Configurable via `DEVMIND_DEPTH_CAP` env var, `depthCap` config field, or `/depth-cap N` slash command (range 1–30). |
+| `DEPTH_CAP` | 10 | Max tool-dispatch rounds per user turn. Terminates with error message if exceeded. Configurable via `DEVMIND_DEPTH_CAP` env var, `depthCap` config field, or `/depth-cap N` slash command (range 1–100). |
 | Crash recovery | 1 retry | McpServer crash → auto-reconnect → retry tool once → abort turn on second crash |
 
 ### Context budget

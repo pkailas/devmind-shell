@@ -49,7 +49,7 @@ const DEFAULT_MODEL = "G:\\models\\GEMMA4\\google_gemma-4-31B-it-Q8_0.gguf";
 const DEFAULT_TOOL_TIMEOUT_MS = 30_000;
 const DEFAULT_DEPTH_CAP = 10;
 const DEPTH_CAP_MIN = 1;
-const DEPTH_CAP_MAX = 30;
+const DEPTH_CAP_MAX = 100;
 
 export type Config = {
   baseURL: string;

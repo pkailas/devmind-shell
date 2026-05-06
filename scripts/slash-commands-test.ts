@@ -129,10 +129,10 @@ console.log("\n=== /depth-cap 20 (persists) ===");
   check("persisted 20", persisted["depthCap"] === 20);
 }
 
-console.log("\n=== /depth-cap 99 (out of range) ===");
+console.log("\n=== /depth-cap 101 (out of range) ===");
 {
   const before = readPersisted();
-  const r = await dispatchSlashCommand("/depth-cap 99", ctx);
+  const r = await dispatchSlashCommand("/depth-cap 101", ctx);
   check("error", r.isError === true);
   check("usage message", r.message.includes("Usage: /depth-cap"));
   check("config unchanged", liveConfig.depthCap === 20);
