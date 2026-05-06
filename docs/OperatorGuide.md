@@ -4,7 +4,7 @@ project: DevMindShell
 stage: 11
 title: DevMindShell Operator Guide
 verified_date: "2026-05-06"
-last_updated: "2026-05-07"
+last_updated: "2026-05-08"
 revalidate_after: "2026-08-06"
 tech_versions:
   bun: "1.3.13"
@@ -58,6 +58,7 @@ Priority over config file. All are optional; built-in defaults shown.
 | `DEVMIND_TOOL_TIMEOUT_MS` | `30000` | Non-streaming tool-call timeout in milliseconds |
 | `DEVMIND_CONFIG_PATH` | *(platform default — see §3)* | Override config file location |
 | `DEVMIND_BEHAVIORAL_RULES` | `""` (empty) | Plain string appended to the system prompt before project-context files. Multi-line content: use the config file's `behavioralRules` field instead. |
+| `DEVMIND_SHOW_REASONING` | `"true"` | `"true"` / `"false"` (case-insensitive). When `false`, `<ReasoningBlock>` renders nothing and the status bar shows a Braille spinner + orange `Thinking...` during the reasoning phase instead of the standard `■ Generating...`. |
 
 **PowerShell set syntax**:
 ```powershell
@@ -90,7 +91,8 @@ All fields optional. Env vars override config file values.
   "model":            "<model-id>",
   "mcpServerPath":    "C:/path/to/DevMind.McpServer.exe",
   "toolTimeoutMs":    30000,
-  "behavioralRules":  "Always respond in English. Prefer minimal diffs."
+  "behavioralRules":  "Always respond in English. Prefer minimal diffs.",
+  "showReasoning":    true
 }
 ```
 
@@ -102,6 +104,7 @@ All fields optional. Env vars override config file values.
 | `mcpServerPath` | string | `DEVMIND_MCP_SERVER_PATH` |
 | `toolTimeoutMs` | number | `DEVMIND_TOOL_TIMEOUT_MS` |
 | `behavioralRules` | string | `DEVMIND_BEHAVIORAL_RULES` |
+| `showReasoning` | boolean | `DEVMIND_SHOW_REASONING` |
 
 ---
 
@@ -203,15 +206,17 @@ Progress notifications are streamed line-by-line to the shell during execution. 
 
 Rendered as the bottom line of the Ink UI (`<StatusBar>` component, `src/index.tsx`).
 
-| Display | Meaning |
-|---------|---------|
-| `○ Ready` | Idle; waiting for input |
-| `● Thinking…` | LLM streaming tokens |
-| `● Tool: <name>` | MCP tool call in progress |
-| `[Cancelled]` | Esc pressed; stream or tool aborted |
-| `[Error]` | Unrecoverable error in current turn |
+| Display | Condition | Meaning |
+|---------|-----------|---------|
+| `○ Ready` | idle | Waiting for input |
+| `■ Generating...` | streaming; content tokens arriving | LLM producing response text |
+| `⠋ Thinking...` | streaming; reasoning phase; `showReasoning=false` | Braille spinner (80ms/frame) + orange text; reasoning tokens arriving but hidden. Transitions to `■ Generating...` once content tokens start. |
+| `■ Running: <name>` | streaming; tool call in flight | MCP tool dispatched and executing |
+| `✗ Error` | error phase | Unrecoverable error in current turn |
 
-Colors: `○` uses `dim` (`#888888`); `●` uses `pending` (`#DCDCAA`); `[Cancelled]` and `[Error]` use `error` (`#F44747`). See §10 for full palette.
+**Colors**: `○` uses `success` (`#4EC94E`); `■` uses `pending` (`#DCDCAA`); spinner character uses `normal` (`#CCCCCC`); `Thinking...` text uses `thinkingActive` (`#E07A0C`); `✗ Error` uses `error` (`#F44747`). See §10 for full palette.
+
+**Note**: `showReasoning=true` (default) — the `⠋ Thinking...` state never appears. Both the reasoning phase and the content phase show `■ Generating...`.
 
 ---
 
@@ -271,6 +276,7 @@ Source: `src/ui/theme.ts`. Hex values match the DevMind WPF VSIX palette.
 | `success` | `#4EC94E` | Task done marker, successful tool results |
 | `thinking` | `#6A6A8A` | `reasoning_content` / chain-of-thought blocks |
 | `pending` | `#DCDCAA` | In-flight indicators (active tool calls, generating) |
+| `thinkingActive` | `#E07A0C` | Status bar `Thinking...` label when `showReasoning=false` and model is in reasoning phase |
 
 Ink renders hex via ANSI Truecolor. Terminals without Truecolor support fall back to the nearest 256-color or 16-color equivalent.
 
