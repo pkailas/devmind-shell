@@ -4,7 +4,7 @@ project: DevMindShell
 stage: 11
 title: DevMindShell Operator Guide
 verified_date: "2026-05-06"
-last_updated: "2026-05-06"
+last_updated: "2026-05-07"
 revalidate_after: "2026-08-06"
 tech_versions:
   bun: "1.3.13"
@@ -57,6 +57,7 @@ Priority over config file. All are optional; built-in defaults shown.
 | `DEVMIND_MCP_SERVER_PATH` | *(resolved via chain — see §4)* | Absolute path to `DevMind.McpServer.exe` |
 | `DEVMIND_TOOL_TIMEOUT_MS` | `30000` | Non-streaming tool-call timeout in milliseconds |
 | `DEVMIND_CONFIG_PATH` | *(platform default — see §3)* | Override config file location |
+| `DEVMIND_BEHAVIORAL_RULES` | `""` (empty) | Plain string appended to the system prompt before project-context files. Multi-line content: use the config file's `behavioralRules` field instead. |
 
 **PowerShell set syntax**:
 ```powershell
@@ -84,11 +85,12 @@ All fields optional. Env vars override config file values.
 
 ```json
 {
-  "baseURL":       "http://10.0.0.15:8080/v1",
-  "apiKey":        "lm-studio",
-  "model":         "<model-id>",
-  "mcpServerPath": "C:/path/to/DevMind.McpServer.exe",
-  "toolTimeoutMs": 30000
+  "baseURL":          "http://10.0.0.15:8080/v1",
+  "apiKey":           "lm-studio",
+  "model":            "<model-id>",
+  "mcpServerPath":    "C:/path/to/DevMind.McpServer.exe",
+  "toolTimeoutMs":    30000,
+  "behavioralRules":  "Always respond in English. Prefer minimal diffs."
 }
 ```
 
@@ -99,6 +101,7 @@ All fields optional. Env vars override config file values.
 | `model` | string | `DEVMIND_MODEL` |
 | `mcpServerPath` | string | `DEVMIND_MCP_SERVER_PATH` |
 | `toolTimeoutMs` | number | `DEVMIND_TOOL_TIMEOUT_MS` |
+| `behavioralRules` | string | `DEVMIND_BEHAVIORAL_RULES` |
 
 ---
 
