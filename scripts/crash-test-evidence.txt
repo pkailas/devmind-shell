@@ -1,0 +1,34 @@
+=== §9.3 McpServer crash recovery verification ===
+Date: 2026-05-06T13:47:58.331Z
+Bun: 1.3.13
+
+--- Phase 1: connect ---
+connected, 16 tools available
+McpServer PIDs visible: [40936]
+
+--- Phase 2: kill mid-call ---
+[+1064ms] killing McpServer PIDs: [40936]
+[+5165ms] callTool threw: McpError
+  message: MCP error -32000: Connection closed
+  McpError: MCP error -32000: Connection closed
+      at fromError (C:\Users\pkailas\source\repos\DevMindShell\node_modules\@modelcontextprotocol\sdk\dist\esm\types.js:2048:20)
+      at _onclose (C:\Users\pkailas\source\repos\DevMindShell\node_modules\@modelcontextprotocol\sdk\dist\esm\shared\protocol.js:263:32)
+      at <anonymous> (C:\Users\pkailas\source\repos\DevMindShell\node_modules\@modelcontextprotocol\sdk\dist\esm\shared\protocol.js:223:18)
+      at <anonymous> (C:\Users\pkailas\source\repos\DevMindShell\node_modules\@modelcontextprotocol\sdk\dist\esm\client\stdio.js:85:22)
+
+Behavior class: sync-throw
+Time from kill to call resolution: 4542ms
+
+--- Phase 3: reconnect ---
+reconnect succeeded
+
+--- Phase 4: retry the same tool call ---
+retry succeeded: isError=false
+  content[0].text first 80 chars: No memory topics found. Use save_memory to create one.
+
+=== Summary ===
+Initial call behavior: sync-throw
+  Error: McpError: MCP error -32000: Connection closed
+Reconnect: OK
+Retry: OK
+OVERALL: PASS — recoverable per AgenticLoop's existing reconnect path
