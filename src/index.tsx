@@ -220,18 +220,13 @@ function InputBox({ buffer, active }: { buffer: string; active: boolean }) {
 
 const BRAILLE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-function ThinkingSpinner() {
+function Spinner() {
   const [frame, setFrame] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setFrame((f) => (f + 1) % BRAILLE_FRAMES.length), 80);
     return () => clearInterval(id);
   }, []);
-  return (
-    <Text>
-      <Text color={theme.normal}>{BRAILLE_FRAMES[frame]} </Text>
-      <Text color={theme.thinkingActive}>Thinking...</Text>
-    </Text>
-  );
+  return <Text color={theme.normal}>{BRAILLE_FRAMES[frame]}</Text>;
 }
 
 function StatusBar({
@@ -267,7 +262,11 @@ function StatusBar({
       active.text.length === 0 &&
       active.toolCalls.length === 0;
     if (!showReasoning && isReasoningPhase) {
-      return <ThinkingSpinner />;
+      return (
+        <Text>
+          <Spinner />{" "}<Text color={theme.thinkingActive}>Thinking...</Text>
+        </Text>
+      );
     }
     return (
       <Text>
