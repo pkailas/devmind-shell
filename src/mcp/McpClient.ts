@@ -1,13 +1,17 @@
-// File: McpClient.ts  v1.0
+// File: src/mcp/McpClient.ts  v1.1
 // Copyright (c) iOnline Consulting LLC. All rights reserved.
 //
 // Thin wrapper around the MCP SDK Client + StdioClientTransport.
 // Spawns DevMind.McpServer.exe as a child process and communicates
 // over its stdin/stdout. The server's stderr is inherited (passes
 // through to our stderr) so server diagnostics appear in the terminal.
+//
+// Forward-slash path convention enforced via toSubprocessPath() — see
+// docs/Stage11-Tech-Reference.md §6 and src/util/path.ts.
 
-import { Client } from "@modelcontextprotocol/sdk/client";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { toSubprocessPath } from "../util/path.js";
 
 export type ToolInfo = {
   name: string;
@@ -30,7 +34,7 @@ export class McpClient {
   async connect(serverPath: string, workingDir: string): Promise<void> {
     const transport = new StdioClientTransport({
       command: serverPath,
-      args: ["--dir", workingDir],
+      args: ["--dir", toSubprocessPath(workingDir)],
       stderr: "inherit",
     });
 

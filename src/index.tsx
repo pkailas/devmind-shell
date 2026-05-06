@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect } from "react";
 import { render, Text, Box, useApp } from "ink";
-import { McpClient } from "./McpClient.js";
+import { McpClient } from "./mcp/McpClient.js";
 
 const SERVER_PATH =
   "C:/Users/pkailas/source/repos/DevMind/DevMind.McpServer/bin/Debug/net8.0/DevMind.McpServer.exe";
