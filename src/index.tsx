@@ -21,12 +21,7 @@ import { McpClient, type ToolInfo } from "./mcp/McpClient.js";
 import { StreamingClient } from "./llm/StreamingClient.js";
 import { AgenticLoop, type LoopEvent } from "./loop/AgenticLoop.js";
 import { installSignalHandlers, onShutdown } from "./util/lifecycle.js";
-
-const BASE_URL = process.env.DEVMIND_BASE_URL ?? "http://10.0.0.15:8080/v1";
-const API_KEY = process.env.DEVMIND_API_KEY ?? "lm-studio";
-const MODEL = process.env.DEVMIND_MODEL ?? "G:\\models\\GEMMA4\\google_gemma-4-31B-it-Q8_0.gguf";
-const SERVER_PATH =
-  "C:/Users/pkailas/source/repos/DevMind/DevMind.McpServer/bin/Debug/net8.0/DevMind.McpServer.exe";
+import { resolveConfig, describeConfig } from "./util/config.js";
 
 const PROGRESS_TOOLS = new Set(["run_shell", "run_build", "run_tests"]);
 const MAX_PROGRESS_LINES_VISIBLE = 12; // collapse longer streams
@@ -266,7 +261,15 @@ function StatusBar({
 
 // ── Main app ────────────────────────────────────────────────────────────────
 
-function App({ loop, toolsCount }: { loop: AgenticLoop; toolsCount: number }) {
+function App({
+  loop,
+  toolsCount,
+  banner,
+}: {
+  loop: AgenticLoop;
+  toolsCount: number;
+  banner: string[];
+}) {
   const { exit } = useApp();
   const [phase, setPhase] = useState<Phase>("input");
   const [buffer, setBuffer] = useState<string>("");
@@ -382,10 +385,13 @@ function App({ loop, toolsCount }: { loop: AgenticLoop; toolsCount: number }) {
     <Box flexDirection="column">
       {completed.length === 0 && active === null && (
         <Box marginBottom={1} flexDirection="column">
-          <Text bold color="cyan">DevMindShell — Phase C (agentic, with tools)</Text>
-          <Text dimColor>endpoint: {BASE_URL}</Text>
-          <Text dimColor>model: {MODEL}</Text>
-          <Text dimColor>tools: {toolsCount} available</Text>
+          <Text bold color="cyan">DevMindShell</Text>
+          {banner.map((line, i) => (
+            <Text key={i} dimColor>
+              {line}
+            </Text>
+          ))}
+          <Text dimColor>tools:       {toolsCount} available</Text>
         </Box>
       )}
 
@@ -451,6 +457,16 @@ function applyEvent(turn: ActiveTurnState, ev: LoopEvent): ActiveTurnState {
 // hang and the user might want to Ctrl+C out of it.
 installSignalHandlers();
 
+let config: ReturnType<typeof resolveConfig>;
+try {
+  config = resolveConfig();
+} catch (e: unknown) {
+  process.stderr.write(
+    `Configuration error:\n${e instanceof Error ? e.message : String(e)}\n`,
+  );
+  process.exit(2);
+}
+
 const cwd = process.cwd();
 const mcp = new McpClient();
 
@@ -462,18 +478,22 @@ onShutdown(async () => {
 
 let tools: ToolInfo[];
 try {
-  await mcp.connect(SERVER_PATH, cwd);
+  await mcp.connect(config.mcpServerPath, cwd);
   tools = await mcp.listTools();
 } catch (e: unknown) {
   process.stderr.write(
-    `Failed to connect to McpServer at ${SERVER_PATH}\n` +
+    `Failed to connect to McpServer at ${config.mcpServerPath}\n` +
       `Working directory: ${cwd}\n` +
       `Error: ${e instanceof Error ? e.message : String(e)}\n`,
   );
   process.exit(1);
 }
 
-const streaming = new StreamingClient({ baseURL: BASE_URL, apiKey: API_KEY, model: MODEL });
+const streaming = new StreamingClient({
+  baseURL: config.baseURL,
+  apiKey: config.apiKey,
+  model: config.model,
+});
 
 const SYSTEM_PROMPT =
   `You are DevMindShell, a coding assistant running in a terminal. ` +
@@ -489,7 +509,10 @@ const loop = new AgenticLoop({
   systemPrompt: SYSTEM_PROMPT,
 });
 
-const { waitUntilExit } = render(<App loop={loop} toolsCount={tools.length} />);
+const banner = describeConfig(config).split("\n");
+const { waitUntilExit } = render(
+  <App loop={loop} toolsCount={tools.length} banner={banner} />,
+);
 await waitUntilExit();
 // Normal Ink exit path: run shutdown steps too (so McpServer disconnects).
 await mcp.disconnect().catch(() => {});

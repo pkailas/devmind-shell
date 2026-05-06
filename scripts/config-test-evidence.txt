@@ -1,0 +1,60 @@
+=== Phase D config + path-resolution chain ===
+Date: 2026-05-06T14:16:17.363Z
+
+--- Tier 1: DEVMIND_MCP_SERVER_PATH env var ---
+OK
+endpoint:    http://10.0.0.15:8080/v1
+model:       G:\models\GEMMA4\google_gemma-4-31B-it-Q8_0.gguf
+McpServer:   C:/Users/pkailas/source/repos/DevMind/DevMind.McpServer/bin/Debug/net8.0/DevMind.McpServer.exe
+timeout:     30000ms (non-streaming tools)
+config file: (none — using env + defaults)
+
+Tier 1 result: PASS
+
+--- Tier 2: config file mcpServerPath ---
+OK
+endpoint:    http://from-config-file:8080/v1
+model:       G:\models\GEMMA4\google_gemma-4-31B-it-Q8_0.gguf
+McpServer:   C:/Users/pkailas/source/repos/DevMind/DevMind.McpServer/bin/Debug/net8.0/DevMind.McpServer.exe
+timeout:     30000ms (non-streaming tools)
+config file: C:\Users\pkailas\AppData\Local\Temp\devmind-config-test-2dJUl5\shell.json
+
+Tier 2 result: PASS
+
+--- Tier 2b: env var overrides config file ---
+OK
+endpoint:    http://from-env:9000/v1
+model:       G:\models\GEMMA4\google_gemma-4-31B-it-Q8_0.gguf
+McpServer:   C:/Users/pkailas/source/repos/DevMind/DevMind.McpServer/bin/Debug/net8.0/DevMind.McpServer.exe
+timeout:     30000ms (non-streaming tools)
+config file: C:\Users\pkailas\AppData\Local\Temp\devmind-config-test-2dJUl5\shell.json
+
+Tier 2b result: PASS
+
+--- Tier 3: adjacent-build sibling-repo discovery ---
+OK
+endpoint:    http://10.0.0.15:8080/v1
+model:       G:\models\GEMMA4\google_gemma-4-31B-it-Q8_0.gguf
+McpServer:   C:\Users\pkailas\source\repos\DevMind\DevMind.McpServer\bin\Release\net8.0\DevMind.McpServer.exe
+timeout:     30000ms (non-streaming tools)
+config file: (none — using env + defaults)
+
+Tier 3 result: PASS
+
+--- Tier 4: hard error when no tier resolves ---
+OK
+endpoint:    http://10.0.0.15:8080/v1
+model:       G:\models\GEMMA4\google_gemma-4-31B-it-Q8_0.gguf
+McpServer:   C:\Users\pkailas\source\repos\DevMind\DevMind.McpServer\bin\Release\net8.0\DevMind.McpServer.exe
+timeout:     30000ms (non-streaming tools)
+config file: (none — using env + defaults)
+
+Tier 4 result: PASS (env tier missed → fell through to adjacent build)
+
+=== Summary ===
+Tier 1 (env DEVMIND_MCP_SERVER_PATH):  PASS
+Tier 2 (config file mcpServerPath):    PASS
+Tier 2b (env overrides file):           PASS
+Tier 3 (adjacent build sibling):       PASS
+Tier 4 (env miss falls to adjacent):   PASS
+OVERALL: PASS
