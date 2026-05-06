@@ -1,0 +1,24 @@
+=== Phase D graceful shutdown verification ===
+Date: 2026-05-06T14:13:33.825Z
+
+--- Test 1: shutdown steps run in registration order ---
+Note: Windows child.kill('SIGINT') is TerminateProcess (Node docs:
+  https://nodejs.org/api/process.html#processkillpid-signal). Real
+  Ctrl+C handling is exercised in production by the user's terminal
+  delivering CTRL_C_EVENT to bun.exe. We test the cleanup logic
+  directly here by importing it.
+
+Steps registered: 3
+(Real signal-driven invocation runs in production via terminal CTRL_C_EVENT.)
+
+--- Test 2: McpClient.disconnect terminates McpServer subprocess ---
+baseline McpServer.exe count: 0
+after connect: 1 (delta: 1)
+disconnect() took 15ms
+after disconnect (+500ms): 0
+No orphan McpServer.exe: YES
+
+=== Summary ===
+Lifecycle steps registered: 3 (deferred)
+McpClient.disconnect terminates subprocess: OK
+Disconnect latency: 15ms

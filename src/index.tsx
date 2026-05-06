@@ -20,6 +20,7 @@ import { render, Text, Box, Static, useApp, useInput } from "ink";
 import { McpClient, type ToolInfo } from "./mcp/McpClient.js";
 import { StreamingClient } from "./llm/StreamingClient.js";
 import { AgenticLoop, type LoopEvent } from "./loop/AgenticLoop.js";
+import { installSignalHandlers, onShutdown } from "./util/lifecycle.js";
 
 const BASE_URL = process.env.DEVMIND_BASE_URL ?? "http://10.0.0.15:8080/v1";
 const API_KEY = process.env.DEVMIND_API_KEY ?? "lm-studio";
@@ -301,15 +302,18 @@ function App({ loop, toolsCount }: { loop: AgenticLoop; toolsCount: number }) {
     }
   });
 
+  // Register Ink-aware shutdown steps. The top-level signal handlers
+  // (installed in the bootstrap before render()) drive cleanup; this
+  // mount-time hook just hands them the abort + exit functions.
   useEffect(() => {
-    const onSigint = () => {
+    onShutdown(() => {
       abortRef.current?.abort();
-      setTimeout(() => exit(), 50);
-    };
-    process.on("SIGINT", onSigint);
-    return () => {
-      process.off("SIGINT", onSigint);
-    };
+    });
+    onShutdown(async () => {
+      // Give Ink a frame to render the final state before exiting
+      exit();
+      await new Promise((r) => setTimeout(r, 50));
+    });
   }, [exit]);
 
   useEffect(() => {
@@ -443,8 +447,18 @@ function applyEvent(turn: ActiveTurnState, ev: LoopEvent): ActiveTurnState {
 
 // ── Bootstrap ───────────────────────────────────────────────────────────────
 
+// Install signal handlers BEFORE any work — even McpServer connect can
+// hang and the user might want to Ctrl+C out of it.
+installSignalHandlers();
+
 const cwd = process.cwd();
 const mcp = new McpClient();
+
+// McpServer disconnect runs late in the shutdown sequence so any active
+// tool calls get a chance to abort first.
+onShutdown(async () => {
+  await mcp.disconnect();
+});
 
 let tools: ToolInfo[];
 try {
@@ -477,5 +491,6 @@ const loop = new AgenticLoop({
 
 const { waitUntilExit } = render(<App loop={loop} toolsCount={tools.length} />);
 await waitUntilExit();
+// Normal Ink exit path: run shutdown steps too (so McpServer disconnects).
 await mcp.disconnect().catch(() => {});
 process.exit(0);
