@@ -1,0 +1,30 @@
+=== Phase A SSE gate test ===
+Date: 2026-05-06T11:48:33.855Z
+Bun: 1.3.13
+baseURL: http://10.0.0.15:8080/v1
+model: G:\models\GEMMA4\google_gemma-4-31B-it-Q8_0.gguf
+prompt: "Say hi" with max_tokens=80
+
+[+201ms] stream opened, awaiting first delta...
+[+203ms] delta #1: content="" reasoning=""
+[+289ms] delta #2: content="" reasoning="The"
+[+319ms] delta #3: content="" reasoning=" user"
+
+=== Stream complete ===
+Total deltas: 39
+Total elapsed: 1422ms
+First delta arrived: +203ms
+Last delta arrived:  +1421ms
+First 9 inter-delta intervals (ms): 85, 31, 30, 30, 30, 30, 29, 30, 29
+
+reasoning_content (Gemma 4 CoT, 83 chars):
+The user said "Say hi".
+The user wants a greeting.
+"Hi!" or "Hello!" or "Hi there!"
+
+content (35 chars, first appeared at +1123ms):
+Hi there! How can I help you today?
+
+VERDICT: PASS
+  - incremental delivery: YES  (39 deltas spanning 1218ms)
+  - output produced: YES
