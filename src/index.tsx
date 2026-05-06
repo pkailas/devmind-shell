@@ -1,4 +1,4 @@
-// File: src/index.tsx  v4.3
+// File: src/index.tsx  v4.4
 // Copyright (c) iOnline Consulting LLC. All rights reserved.
 //
 // Phase C interactive shell: agentic loop with tool dispatch.
@@ -491,6 +491,15 @@ function App({
         setConfig(next);
       },
       resetConversation: () => {
+        // Ink's <Static> flushes completed turns directly to the
+        // terminal scrollback and does not redraw on items-prop change
+        // (Phase B §9.5). Clearing the React state alone leaves prior
+        // turns visible to the user. ESC c (\x1Bc) is the RIS — Reset
+        // to Initial State — escape, which clears scrollback on every
+        // mainstream terminal we target. console.clear() falls back to
+        // \x1B[2J\x1B[0;0H on TTYs, which scrolls content up rather
+        // than wiping it on some Windows terminals.
+        process.stdout.write("\x1Bc");
         setCompleted([]);
         loop.resetHistory();
       },
