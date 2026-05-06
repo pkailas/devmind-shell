@@ -1,4 +1,4 @@
-// File: src/util/config.ts  v1.1
+// File: src/util/config.ts  v1.2
 // Copyright (c) iOnline Consulting LLC. All rights reserved.
 //
 // Configuration resolution: env vars > config file > defaults.
@@ -29,6 +29,10 @@
 //                                location (skips platform discovery)
 //   DEVMIND_BEHAVIORAL_RULES  — plain string appended to the system prompt
 //                                before project-context files (default "")
+//   DEVMIND_SHOW_REASONING    — "true"/"false" (case-insensitive); controls
+//                                whether <ReasoningBlock> renders in the UI
+//                                and activates the spinner status bar variant
+//                                when false (default "true")
 
 import { homedir, platform } from "os";
 import { join, resolve, dirname, isAbsolute } from "path";
@@ -47,6 +51,7 @@ export type Config = {
   mcpServerPath: string;
   toolTimeoutMs: number;
   behavioralRules: string;
+  showReasoning: boolean;
   configFileLoaded: string | null; // for diagnostics
 };
 
@@ -57,6 +62,7 @@ type ConfigFile = Partial<{
   mcpServerPath: string;
   toolTimeoutMs: number;
   behavioralRules: string;
+  showReasoning: boolean;
 }>;
 
 /** Default config-file path for the current platform.
@@ -113,6 +119,7 @@ export function resolveConfig(): Config {
     process.env.DEVMIND_TOOL_TIMEOUT_MS ?? file?.toolTimeoutMs?.toString(),
   );
   const behavioralRules = process.env.DEVMIND_BEHAVIORAL_RULES ?? file?.behavioralRules ?? "";
+  const showReasoning = parseBooleanEnv(process.env.DEVMIND_SHOW_REASONING) ?? file?.showReasoning ?? true;
 
   return {
     baseURL,
@@ -121,6 +128,7 @@ export function resolveConfig(): Config {
     mcpServerPath,
     toolTimeoutMs,
     behavioralRules,
+    showReasoning,
     configFileLoaded: fileLoaded,
   };
 }
@@ -130,6 +138,15 @@ function parseTimeoutMs(input: string | undefined): number {
   const n = Number(input);
   if (!Number.isFinite(n) || n <= 0) return DEFAULT_TOOL_TIMEOUT_MS;
   return Math.floor(n);
+}
+
+/** Parse "true"/"false" (case-insensitive) → boolean. Anything else → undefined (fall through). */
+function parseBooleanEnv(val: string | undefined): boolean | undefined {
+  if (val === undefined) return undefined;
+  const lower = val.toLowerCase();
+  if (lower === "true") return true;
+  if (lower === "false") return false;
+  return undefined;
 }
 
 /**
