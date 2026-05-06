@@ -1,0 +1,15 @@
+[STATIC-RENDER] id=1 count=1
+[STATIC-RENDER] id=2 count=1
+[STATIC-RENDER] id=3 count=1
+[STATIC-RENDER] id=4 count=1
+[STATIC-RENDER] id=5 count=1
+
+=== Stress test summary ===
+ActiveTurn renders: 101
+Static id=1 renders: 1
+Static id=2 renders: 1
+Static id=3 renders: 1
+Static id=4 renders: 1
+Static id=5 renders: 1
+max Static renders: 1
+VERDICT: PASS
