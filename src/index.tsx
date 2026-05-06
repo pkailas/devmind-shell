@@ -24,6 +24,7 @@ import { installSignalHandlers, onShutdown } from "./util/lifecycle.js";
 import { resolveConfig, describeConfig } from "./util/config.js";
 import { loadProjectContext, formatContextForPrompt } from "./util/projectContext.js";
 import { probeLlamaServer, writeStartupError } from "./util/startup.js";
+import { theme } from "./ui/theme.js";
 
 const PROGRESS_TOOLS = new Set(["run_shell", "run_build", "run_tests"]);
 const MAX_PROGRESS_LINES_VISIBLE = 12; // collapse longer streams
@@ -126,7 +127,7 @@ function ToolCallView({ call, isActive }: { call: ToolCallEntry; isActive: boole
   const argsSummary = summarizeArgs(call.args);
   const arrow = call.status === "done" ? "→" : "→";
   const headerColor =
-    call.status === "done" ? (call.isError ? "red" : "green") : "yellow";
+    call.status === "done" ? (call.isError ? theme.error : theme.success) : theme.pending;
   return (
     <Box flexDirection="column" marginY={0}>
       <Text>
@@ -139,9 +140,9 @@ function ToolCallView({ call, isActive }: { call: ToolCallEntry; isActive: boole
       )}
       {call.status === "done" && call.result !== null && (
         <Text>
-          <Text color={call.isError ? "red" : "cyan"}>{"  [← "}</Text>
+          <Text color={call.isError ? theme.error : theme.input}>{"  [← "}</Text>
           <Text>{summarizeResult(call.result, call.isError === true)}</Text>
-          <Text color={call.isError ? "red" : "cyan"}>{"]"}</Text>
+          <Text color={call.isError ? theme.error : theme.input}>{"]"}</Text>
         </Text>
       )}
     </Box>
@@ -152,7 +153,7 @@ function CompletedTurnView({ turn }: { turn: CompletedTurn }) {
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box>
-        <Text color="cyan">{"> "}</Text>
+        <Text color={theme.input}>{"> "}</Text>
         <Text>{turn.userText}</Text>
       </Box>
       <ReasoningBlock text={turn.reasoning} expanded={false} streaming={false} />
@@ -161,14 +162,14 @@ function CompletedTurnView({ turn }: { turn: CompletedTurn }) {
         <ToolCallView key={c.id} call={c} isActive={false} />
       ))}
       {turn.doneReason === "task_done" && turn.doneSummary && (
-        <Text color="green">✓ {turn.doneSummary}</Text>
+        <Text color={theme.success}>✓ {turn.doneSummary}</Text>
       )}
-      {turn.doneReason === "abort" && <Text color="yellow">[cancelled]</Text>}
+      {turn.doneReason === "abort" && <Text color={theme.pending}>[cancelled]</Text>}
       {turn.doneReason === "error" && turn.errorMessage && (
-        <Text color="red">✗ {turn.errorMessage}</Text>
+        <Text color={theme.error}>✗ {turn.errorMessage}</Text>
       )}
       {turn.doneReason === "depth_cap" && turn.errorMessage && (
-        <Text color="red">✗ {turn.errorMessage}</Text>
+        <Text color={theme.error}>✗ {turn.errorMessage}</Text>
       )}
     </Box>
   );
@@ -178,7 +179,7 @@ function ActiveTurn({ turn }: { turn: ActiveTurnState }) {
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box>
-        <Text color="cyan">{"> "}</Text>
+        <Text color={theme.input}>{"> "}</Text>
         <Text>{turn.userText}</Text>
       </Box>
       <ReasoningBlock
@@ -200,14 +201,14 @@ function InputBox({ buffer, active }: { buffer: string; active: boolean }) {
     <Box
       flexDirection="column"
       borderStyle="round"
-      borderColor={active ? "green" : "gray"}
+      borderColor={active ? theme.input : theme.dim}
       paddingX={1}
     >
       {lines.map((line, i) => (
         <Box key={i}>
-          {i === 0 ? <Text color="green">{"> "}</Text> : <Text>{"  "}</Text>}
+          {i === 0 ? <Text color={theme.input}>{"> "}</Text> : <Text>{"  "}</Text>}
           <Text>{line}</Text>
-          {active && i === lines.length - 1 && <Text color="gray">▌</Text>}
+          {active && i === lines.length - 1 && <Text color={theme.dim}>▌</Text>}
         </Box>
       ))}
     </Box>
@@ -231,7 +232,7 @@ function StatusBar({
     if (inToolDispatch && lastCall) {
       return (
         <Text>
-          <Text color="yellow">■ Running: </Text>
+          <Text color={theme.pending}>■ Running: </Text>
           <Text>{lastCall.name}</Text>
           <Text dimColor>
             {" "}({(elapsedMs / 1000).toFixed(1)}s, round {active.currentRound})  [Esc to cancel]
@@ -241,7 +242,7 @@ function StatusBar({
     }
     return (
       <Text>
-        <Text color="yellow">■ Generating... </Text>
+        <Text color={theme.pending}>■ Generating... </Text>
         <Text dimColor>
           ({(elapsedMs / 1000).toFixed(1)}s, round {active.currentRound})  [Esc to cancel]
         </Text>
@@ -249,11 +250,11 @@ function StatusBar({
     );
   }
   if (phase === "error") {
-    return <Text color="red">✗ Error</Text>;
+    return <Text color={theme.error}>✗ Error</Text>;
   }
   return (
     <Text>
-      <Text color="green">○ Ready </Text>
+      <Text color={theme.success}>○ Ready </Text>
       <Text dimColor>
         ({toolsCount} tools available · Enter to send · Shift+Enter newline · Ctrl+C to exit)
       </Text>
@@ -387,7 +388,7 @@ function App({
     <Box flexDirection="column">
       {completed.length === 0 && active === null && (
         <Box marginBottom={1} flexDirection="column">
-          <Text bold color="cyan">DevMindShell</Text>
+          <Text bold color={theme.input}>DevMindShell</Text>
           {banner.map((line, i) => (
             <Text key={i} dimColor>
               {line}
@@ -405,7 +406,7 @@ function App({
 
       {phase === "error" && (
         <Box marginBottom={1}>
-          <Text color="red">ERROR: {errorText}</Text>
+          <Text color={theme.error}>ERROR: {errorText}</Text>
         </Box>
       )}
 
