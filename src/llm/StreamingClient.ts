@@ -93,7 +93,8 @@ export class StreamingClient {
       throw e;
     }
 
-    if (lastUsage) yield lastUsage;
-    yield { type: "done", finishReason };
+    const wasAborted = opts.signal?.aborted ?? false;
+    if (lastUsage && !wasAborted) yield lastUsage;
+    yield { type: "done", finishReason: wasAborted ? "abort" : finishReason };
   }
 }

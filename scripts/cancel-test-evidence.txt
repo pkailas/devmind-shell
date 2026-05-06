@@ -1,0 +1,22 @@
+=== §9.1 cancel verification ===
+Date: 2026-05-06T13:30:00.119Z
+Bun: 1.3.13
+Pass criterion: latency < 300ms
+
+--- vector: abort-direct ---
+  run #1: tokens=6 aborted=true latency=1ms (start→abortFired=489ms, abortFired→loopExit=1ms)
+  run #2: tokens=14 aborted=true latency=0ms (start→abortFired=517ms, abortFired→loopExit=0ms)
+  run #3: tokens=13 aborted=true latency=0ms (start→abortFired=501ms, abortFired→loopExit=0ms)
+
+--- vector: abort-via-settimeout ---
+  run #1: tokens=14 aborted=true latency=4ms (start→abortFired=523ms, abortFired→loopExit=4ms)
+  run #2: tokens=14 aborted=true latency=0ms (start→abortFired=517ms, abortFired→loopExit=0ms)
+  run #3: tokens=14 aborted=true latency=1ms (start→abortFired=515ms, abortFired→loopExit=1ms)
+
+=== Summary ===
+| vector                | min (ms) | max (ms) | avg (ms) | verdict |
+|-----------------------|---------:|---------:|---------:|---------|
+| abort-direct          |        0 |        1 |        1 | PASS    |
+| abort-via-settimeout  |        0 |        4 |        2 | PASS    |
+
+OVERALL VERDICT: PASS
