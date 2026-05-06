@@ -447,6 +447,11 @@ function applyEvent(turn: ActiveTurnState, ev: LoopEvent): ActiveTurnState {
       );
       return { ...turn, toolCalls: calls };
     }
+    case "context_trim":
+      // No active-turn UI surface in Phase D — just keep going. The trim
+      // happens before the user message goes in, and it's diagnostic.
+      // (A future banner notification could surface this.)
+      return turn;
     case "turn_complete":
       return turn;
   }

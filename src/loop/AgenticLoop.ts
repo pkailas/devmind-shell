@@ -46,6 +46,7 @@ import type {
 } from "openai/resources/chat/completions/completions";
 import { StreamingClient, type StreamEvent } from "../llm/StreamingClient.js";
 import type { McpClient, ToolInfo, ToolResult } from "../mcp/McpClient.js";
+import { trimContext, type TrimResult } from "./contextBudget.js";
 
 const DEPTH_CAP = 10;
 
@@ -81,6 +82,7 @@ export type LoopEvent =
       result: string;
       isError: boolean;
     }
+  | { type: "context_trim"; trim: TrimResult }
   | {
       type: "turn_complete";
       reason: "stop" | "task_done" | "error" | "depth_cap" | "abort";
@@ -135,8 +137,15 @@ export class AgenticLoop {
    *  emits tool_calls → we dispatch → re-prompt → repeat). */
   async *runTurn(
     userText: string,
-    opts: { signal?: AbortSignal } = {},
+    opts: { signal?: AbortSignal; contextWindowTokens?: number } = {},
   ): AsyncIterable<LoopEvent> {
+    // Trim oldest non-system messages if estimated tokens exceed
+    // 80% (soft) or 95% (hard) of the configured context window.
+    const trim = trimContext(this._messages, opts.contextWindowTokens);
+    if (trim.trimMode !== "none") {
+      yield { type: "context_trim", trim };
+    }
+
     this._messages.push({ role: "user", content: userText });
 
     for (let round = 1; round <= DEPTH_CAP; round++) {
