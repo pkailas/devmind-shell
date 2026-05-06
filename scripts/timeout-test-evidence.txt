@@ -1,0 +1,14 @@
+=== Phase D timeout-bounded crash detection ===
+Date: 2026-05-06T14:21:12.363Z
+
+tool-call timeout configured: 2000ms
+
+[+503ms] killing McpServer
+[+2009ms] callTool threw: McpError: MCP error -32001: Request timed out
+
+=== Summary ===
+Resolution time:   2009ms after call start
+Detection latency: 1507ms after kill
+Phase C baseline:  4500ms (no explicit timeout)
+Phase D target:    <= 2500ms (timeout + slop)
+VERDICT: PASS

@@ -515,6 +515,7 @@ const loop = new AgenticLoop({
   mcp,
   mcpTools: tools,
   systemPrompt: SYSTEM_PROMPT,
+  toolTimeoutMs: config.toolTimeoutMs,
 });
 
 const banner = describeConfig(config).split("\n");

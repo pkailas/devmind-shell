@@ -105,15 +105,19 @@ export class AgenticLoop {
   private readonly _tools: ChatCompletionTool[];
   private readonly _systemPrompt: string;
 
+  private readonly _toolTimeoutMs: number;
+
   constructor(opts: {
     streaming: StreamingClient;
     mcp: McpClient;
     mcpTools: ToolInfo[];
     systemPrompt: string;
+    toolTimeoutMs?: number;
   }) {
     this._streaming = opts.streaming;
     this._mcp = opts.mcp;
     this._systemPrompt = opts.systemPrompt;
+    this._toolTimeoutMs = opts.toolTimeoutMs ?? 30_000;
     this._tools = [
       ...opts.mcpTools.map((t) => mcpToolToOpenAITool(t)),
       TASK_DONE_TOOL,
@@ -326,10 +330,17 @@ export class AgenticLoop {
         let resolvedError: unknown = null;
         let settled = false;
 
+        // Streaming tools (run_shell/run_build/run_tests) get a longer
+        // ceiling and rely on resetTimeoutOnProgress in McpClient — each
+        // emitted line resets the clock. Non-streaming tools get the
+        // configured timeout (default 30s) so a hung McpServer surfaces
+        // fast (Phase C §9.3 follow-up: was 4.5s SDK-internal close
+        // detection, now bounded by request-level timeout).
+        const STREAMING_TIMEOUT_MS = 600_000; // 10 min ceiling for run_build / run_tests
         const callPromise = this._mcp
           .callTool(p.name, args, {
             signal: opts.signal,
-            timeoutMs: 600_000, // 10 min ceiling for run_build / run_tests
+            timeoutMs: wantsProgress ? STREAMING_TIMEOUT_MS : this._toolTimeoutMs,
             ...(wantsProgress
               ? {
                   onProgressLine: (line) => {
@@ -405,7 +416,7 @@ export class AgenticLoop {
           try {
             result = await this._mcp.callTool(p.name, args, {
               signal: opts.signal,
-              timeoutMs: 600_000,
+              timeoutMs: wantsProgress ? STREAMING_TIMEOUT_MS : this._toolTimeoutMs,
             });
             yield {
               type: "tool_call_progress",
