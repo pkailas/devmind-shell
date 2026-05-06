@@ -1,4 +1,4 @@
-// File: src/util/config.ts  v1.0
+// File: src/util/config.ts  v1.1
 // Copyright (c) iOnline Consulting LLC. All rights reserved.
 //
 // Configuration resolution: env vars > config file > defaults.
@@ -27,6 +27,8 @@
 //   DEVMIND_TOOL_TIMEOUT_MS   — non-streaming tool-call timeout (default 30000)
 //   DEVMIND_CONFIG_PATH       — explicit override of the config-file
 //                                location (skips platform discovery)
+//   DEVMIND_BEHAVIORAL_RULES  — plain string appended to the system prompt
+//                                before project-context files (default "")
 
 import { homedir, platform } from "os";
 import { join, resolve, dirname, isAbsolute } from "path";
@@ -44,6 +46,7 @@ export type Config = {
   model: string;
   mcpServerPath: string;
   toolTimeoutMs: number;
+  behavioralRules: string;
   configFileLoaded: string | null; // for diagnostics
 };
 
@@ -53,6 +56,7 @@ type ConfigFile = Partial<{
   model: string;
   mcpServerPath: string;
   toolTimeoutMs: number;
+  behavioralRules: string;
 }>;
 
 /** Default config-file path for the current platform.
@@ -108,6 +112,7 @@ export function resolveConfig(): Config {
   const toolTimeoutMs = parseTimeoutMs(
     process.env.DEVMIND_TOOL_TIMEOUT_MS ?? file?.toolTimeoutMs?.toString(),
   );
+  const behavioralRules = process.env.DEVMIND_BEHAVIORAL_RULES ?? file?.behavioralRules ?? "";
 
   return {
     baseURL,
@@ -115,6 +120,7 @@ export function resolveConfig(): Config {
     model,
     mcpServerPath,
     toolTimeoutMs,
+    behavioralRules,
     configFileLoaded: fileLoaded,
   };
 }
