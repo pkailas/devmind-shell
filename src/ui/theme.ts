@@ -1,4 +1,4 @@
-// File: src/ui/theme.ts  v1.0
+// File: src/ui/theme.ts  v1.1
 // Copyright (c) iOnline Consulting LLC. All rights reserved.
 //
 // Color palette ported from the DevMind WPF VSIX (DevMind/CLAUDE.md
@@ -22,4 +22,6 @@ export const theme = {
   thinking: "#6A6A8A",
   /** In-progress / generating indicator. */
   pending: "#DCDCAA",
+  /** Status bar Thinking... label when showReasoning=false and model is in reasoning phase. */
+  thinkingActive: "#E07A0C",
 } as const;
