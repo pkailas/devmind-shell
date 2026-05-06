@@ -1,4 +1,4 @@
-// File: src/index.tsx  v4.0
+// File: src/index.tsx  v4.1
 // Copyright (c) iOnline Consulting LLC. All rights reserved.
 //
 // Phase C interactive shell: agentic loop with tool dispatch.
@@ -530,6 +530,7 @@ const SYSTEM_PROMPT =
   `You have ${tools.length} tools available; use them to read, search, and modify files in the working directory. ` +
   `When you have completed the user's task, call task_done with a brief summary. ` +
   `Always read files before patching them. Use list_files or find_in_files for discovery — never assume a path.` +
+  (config.behavioralRules ? `\n\n${config.behavioralRules}` : "") +
   formatContextForPrompt(projectContext);
 
 const loop = new AgenticLoop({
