@@ -1,11 +1,12 @@
-// File: src/commands/builtins.ts  v1.0
+// File: src/commands/builtins.ts  v1.1
 // Copyright (c) iOnline Consulting LLC. All rights reserved.
 //
 // Initial five slash commands. Each is a small, isolated handler. Adding
 // a new command later is one registerCommand call — no dispatcher edits.
 //
 // Persistence policy:
-//   * /reasoning, /depth-cap → persisted to shell.json after success
+//   * /reasoning, /depth-cap, /output-lines, /rules → persisted to
+//     shell.json after success
 //   * /clear, /system_prompt, /help → session-only (no persistence)
 //
 // Validation lives in the handler. Error CommandResults propagate to the
@@ -13,7 +14,7 @@
 // catches handler exceptions, so I/O failures (e.g., persist) surface
 // naturally as error results.
 
-import { DEPTH_CAP_RANGE } from "../util/config.js";
+import { DEPTH_CAP_RANGE, OUTPUT_LINES_RANGE } from "../util/config.js";
 import { persistConfigField } from "../util/configPersist.js";
 import {
   registerCommand,
@@ -66,6 +67,48 @@ async function depthCapHandler(
   ctx.setConfig({ ...ctx.config, depthCap: n });
   await persistConfigField("depthCap", n);
   return { message: `Depth cap set to ${n}` };
+}
+
+// ── /output-lines [N] ───────────────────────────────────────────────────────
+
+async function outputLinesHandler(
+  args: string[],
+  ctx: CommandContext,
+): Promise<CommandResult> {
+  if (args.length === 0) {
+    const cur = ctx.config.outputLines;
+    const note = cur === 0 ? " (unlimited)" : "";
+    return { message: `Current output line limit: ${cur}${note}` };
+  }
+  const raw = args[0];
+  if (raw === undefined) {
+    // Defensive — args.length > 0 should imply args[0] is defined, but
+    // noUncheckedIndexedAccess wants the explicit guard.
+    return {
+      message: `Usage: /output-lines [${OUTPUT_LINES_RANGE.min}-${OUTPUT_LINES_RANGE.max}] (0 = unlimited)`,
+      isError: true,
+    };
+  }
+  const n = Number(raw);
+  if (
+    !Number.isFinite(n) ||
+    !Number.isInteger(n) ||
+    n < OUTPUT_LINES_RANGE.min ||
+    n > OUTPUT_LINES_RANGE.max
+  ) {
+    return {
+      message: `Usage: /output-lines [${OUTPUT_LINES_RANGE.min}-${OUTPUT_LINES_RANGE.max}] (0 = unlimited)`,
+      isError: true,
+    };
+  }
+  ctx.setConfig({ ...ctx.config, outputLines: n });
+  await persistConfigField("outputLines", n);
+  return {
+    message:
+      n === 0
+        ? "Output line limit set to 0 (unlimited)."
+        : `Output line limit set to ${n}.`,
+  };
 }
 
 // ── /clear ──────────────────────────────────────────────────────────────────
@@ -144,6 +187,12 @@ export function registerBuiltinCommands(): void {
     `Show or set agentic depth cap (${DEPTH_CAP_RANGE.min}-${DEPTH_CAP_RANGE.max}, persisted)`,
     "/depth-cap [N]",
     depthCapHandler,
+  );
+  registerCommand(
+    "/output-lines",
+    `Show or set tool-call output line limit (${OUTPUT_LINES_RANGE.min}-${OUTPUT_LINES_RANGE.max}, 0 = unlimited, persisted)`,
+    "/output-lines [N]",
+    outputLinesHandler,
   );
   registerCommand(
     "/clear",

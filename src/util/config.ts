@@ -1,4 +1,4 @@
-// File: src/util/config.ts  v1.3
+// File: src/util/config.ts  v1.4
 // Copyright (c) iOnline Consulting LLC. All rights reserved.
 //
 // Configuration resolution: env vars > config file > defaults.
@@ -37,6 +37,12 @@
 //                                turn before aborting with depth_cap.
 //                                Out-of-range or non-integer values fall
 //                                through to file/default (default 10)
+//   DEVMIND_OUTPUT_LINES      — non-negative integer; max lines of a
+//                                completed tool call's output rendered
+//                                in the UI. 0 disables the cap (show
+//                                everything). Out-of-range or non-integer
+//                                values fall through to file/default
+//                                (default 10)
 
 import { homedir, platform } from "os";
 import { join, resolve, dirname, isAbsolute } from "path";
@@ -50,6 +56,9 @@ const DEFAULT_TOOL_TIMEOUT_MS = 30_000;
 const DEFAULT_DEPTH_CAP = 10;
 const DEPTH_CAP_MIN = 1;
 const DEPTH_CAP_MAX = 100;
+const DEFAULT_OUTPUT_LINES = 10;
+const OUTPUT_LINES_MIN = 0;
+const OUTPUT_LINES_MAX = 100_000;
 
 export type Config = {
   baseURL: string;
@@ -60,6 +69,7 @@ export type Config = {
   behavioralRules: string;
   showReasoning: boolean;
   depthCap: number;
+  outputLines: number;
   configFileLoaded: string | null; // for diagnostics
 };
 
@@ -72,6 +82,7 @@ type ConfigFile = Partial<{
   behavioralRules: string;
   showReasoning: boolean;
   depthCap: number;
+  outputLines: number;
 }>;
 
 /** Default config-file path for the current platform.
@@ -130,6 +141,10 @@ export function resolveConfig(): Config {
   const behavioralRules = process.env.DEVMIND_BEHAVIORAL_RULES ?? file?.behavioralRules ?? "";
   const showReasoning = parseBooleanEnv(process.env.DEVMIND_SHOW_REASONING) ?? file?.showReasoning ?? true;
   const depthCap = parseDepthCap(process.env.DEVMIND_DEPTH_CAP) ?? validateDepthCap(file?.depthCap) ?? DEFAULT_DEPTH_CAP;
+  const outputLines =
+    parseOutputLines(process.env.DEVMIND_OUTPUT_LINES) ??
+    validateOutputLines(file?.outputLines) ??
+    DEFAULT_OUTPUT_LINES;
 
   return {
     baseURL,
@@ -140,6 +155,7 @@ export function resolveConfig(): Config {
     behavioralRules,
     showReasoning,
     depthCap,
+    outputLines,
     configFileLoaded: fileLoaded,
   };
 }
@@ -163,6 +179,26 @@ function validateDepthCap(input: number | undefined): number | undefined {
 
 /** Public range for use by /depth-cap validation. */
 export const DEPTH_CAP_RANGE = { min: DEPTH_CAP_MIN, max: DEPTH_CAP_MAX } as const;
+
+/** Parse and validate DEVMIND_OUTPUT_LINES. Returns the integer if valid, undefined otherwise. */
+function parseOutputLines(input: string | undefined): number | undefined {
+  if (input === undefined) return undefined;
+  const n = Number(input);
+  if (!Number.isFinite(n) || !Number.isInteger(n)) return undefined;
+  if (n < OUTPUT_LINES_MIN || n > OUTPUT_LINES_MAX) return undefined;
+  return n;
+}
+
+/** Validate a config-file outputLines value. Returns the integer if valid, undefined otherwise. */
+function validateOutputLines(input: number | undefined): number | undefined {
+  if (input === undefined) return undefined;
+  if (!Number.isFinite(input) || !Number.isInteger(input)) return undefined;
+  if (input < OUTPUT_LINES_MIN || input > OUTPUT_LINES_MAX) return undefined;
+  return input;
+}
+
+/** Public range for use by /output-lines validation. 0 is the unlimited sentinel. */
+export const OUTPUT_LINES_RANGE = { min: OUTPUT_LINES_MIN, max: OUTPUT_LINES_MAX } as const;
 
 function parseTimeoutMs(input: string | undefined): number {
   if (input === undefined) return DEFAULT_TOOL_TIMEOUT_MS;

@@ -1,4 +1,4 @@
-// File: src/index.tsx  v4.4
+// File: src/index.tsx  v4.5
 // Copyright (c) iOnline Consulting LLC. All rights reserved.
 //
 // Phase C interactive shell: agentic loop with tool dispatch.
@@ -34,7 +34,11 @@ import {
 import { registerBuiltinCommands } from "./commands/builtins.js";
 
 const PROGRESS_TOOLS = new Set(["run_shell", "run_build", "run_tests"]);
-const MAX_PROGRESS_LINES_VISIBLE = 12; // collapse longer streams
+// Per-line character cap inside summarizeResult. Each visible line beyond
+// this width is truncated to (CAP - 3) characters + "..." so very long
+// single lines don't blow out the terminal column. Independent of the
+// outputLines config (which controls the line count).
+const PER_LINE_CHAR_CAP = 100;
 
 type Phase = "input" | "streaming" | "error";
 
@@ -117,18 +121,41 @@ function summarizeArgs(args: unknown): string {
   }
 }
 
-function summarizeResult(result: string, isError: boolean): string {
-  // Take the first non-empty line and trim
-  const firstLine = result.split("\n").find((l) => l.trim().length > 0) ?? "(empty)";
-  const truncated = firstLine.length > 100 ? firstLine.substring(0, 97) + "..." : firstLine;
-  const lineCount = result.split("\n").length;
-  const suffix = lineCount > 1 ? `  (+${lineCount - 1} more lines)` : "";
-  return (isError ? "✗ " : "") + truncated + suffix;
+function summarizeResult(result: string, isError: boolean, outputLines: number): string {
+  // Strip a trailing newline so split doesn't yield an empty tail element
+  // (fixes the off-by-one in the prior "+N more lines" count). Then keep
+  // only non-empty lines for the visible body and the count.
+  const lines = result.replace(/\n+$/, "").split("\n");
+  const nonEmpty = lines.filter((l) => l.trim().length > 0);
+  if (nonEmpty.length === 0) {
+    return (isError ? "✗ " : "") + "(empty)";
+  }
+  // outputLines === 0 is the sentinel for "no cap". When > 0, take the
+  // first N non-empty lines; the rest become the "+M more lines" suffix.
+  const visible = outputLines > 0 ? nonEmpty.slice(0, outputLines) : nonEmpty;
+  const hidden = nonEmpty.length - visible.length;
+  const capped = visible.map((l) =>
+    l.length > PER_LINE_CHAR_CAP ? l.substring(0, PER_LINE_CHAR_CAP - 3) + "..." : l,
+  );
+  const body = capped.join("\n");
+  const suffix = hidden > 0 ? `\n(+${hidden} more lines)` : "";
+  return (isError ? "✗ " : "") + body + suffix;
 }
 
-function ToolOutputRegion({ lines, status }: { lines: string[]; status: ToolCallEntry["status"] }) {
+function ToolOutputRegion({
+  lines,
+  status,
+  outputLines,
+}: {
+  lines: string[];
+  status: ToolCallEntry["status"];
+  outputLines: number;
+}) {
   if (lines.length === 0 && status !== "running") return null;
-  const visible = lines.slice(-MAX_PROGRESS_LINES_VISIBLE);
+  // outputLines === 0 → unlimited; show every streamed line in scrollback.
+  // Otherwise show the trailing N (most recent) and report how many
+  // earlier lines were dropped from the visible region.
+  const visible = outputLines > 0 ? lines.slice(-outputLines) : lines;
   const hidden = lines.length - visible.length;
   return (
     <Box flexDirection="column" marginLeft={2}>
@@ -142,7 +169,15 @@ function ToolOutputRegion({ lines, status }: { lines: string[]; status: ToolCall
   );
 }
 
-function ToolCallView({ call, isActive }: { call: ToolCallEntry; isActive: boolean }) {
+function ToolCallView({
+  call,
+  isActive,
+  outputLines,
+}: {
+  call: ToolCallEntry;
+  isActive: boolean;
+  outputLines: number;
+}) {
   const isStreaming = PROGRESS_TOOLS.has(call.name);
   const argsSummary = summarizeArgs(call.args);
   const arrow = call.status === "done" ? "→" : "→";
@@ -156,12 +191,12 @@ function ToolCallView({ call, isActive }: { call: ToolCallEntry; isActive: boole
         <Text color={headerColor}>{`]`}</Text>
       </Text>
       {isStreaming && isActive && call.status !== "done" && (
-        <ToolOutputRegion lines={call.progress} status={call.status} />
+        <ToolOutputRegion lines={call.progress} status={call.status} outputLines={outputLines} />
       )}
       {call.status === "done" && call.result !== null && (
         <Text>
           <Text color={call.isError ? theme.error : theme.input}>{"  [← "}</Text>
-          <Text>{summarizeResult(call.result, call.isError === true)}</Text>
+          <Text>{summarizeResult(call.result, call.isError === true, outputLines)}</Text>
           <Text color={call.isError ? theme.error : theme.input}>{"]"}</Text>
         </Text>
       )}
@@ -169,7 +204,15 @@ function ToolCallView({ call, isActive }: { call: ToolCallEntry; isActive: boole
   );
 }
 
-function CompletedAgenticTurnView({ turn, showReasoning }: { turn: CompletedAgenticTurn; showReasoning: boolean }) {
+function CompletedAgenticTurnView({
+  turn,
+  showReasoning,
+  outputLines,
+}: {
+  turn: CompletedAgenticTurn;
+  showReasoning: boolean;
+  outputLines: number;
+}) {
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box>
@@ -179,7 +222,7 @@ function CompletedAgenticTurnView({ turn, showReasoning }: { turn: CompletedAgen
       <ReasoningBlock text={turn.reasoning} expanded={false} streaming={false} showReasoning={showReasoning} />
       {turn.text.length > 0 && <Text>{turn.text}</Text>}
       {turn.toolCalls.map((c) => (
-        <ToolCallView key={c.id} call={c} isActive={false} />
+        <ToolCallView key={c.id} call={c} isActive={false} outputLines={outputLines} />
       ))}
       {turn.doneReason === "task_done" && turn.doneSummary && (
         <Text color={theme.success}>✓ {turn.doneSummary}</Text>
@@ -210,14 +253,30 @@ function CompletedCommandTurnView({ turn }: { turn: CompletedCommandTurn }) {
   );
 }
 
-function CompletedTurnView({ turn, showReasoning }: { turn: CompletedTurn; showReasoning: boolean }) {
+function CompletedTurnView({
+  turn,
+  showReasoning,
+  outputLines,
+}: {
+  turn: CompletedTurn;
+  showReasoning: boolean;
+  outputLines: number;
+}) {
   if (turn.kind === "command") {
     return <CompletedCommandTurnView turn={turn} />;
   }
-  return <CompletedAgenticTurnView turn={turn} showReasoning={showReasoning} />;
+  return <CompletedAgenticTurnView turn={turn} showReasoning={showReasoning} outputLines={outputLines} />;
 }
 
-function ActiveTurn({ turn, showReasoning }: { turn: ActiveTurnState; showReasoning: boolean }) {
+function ActiveTurn({
+  turn,
+  showReasoning,
+  outputLines,
+}: {
+  turn: ActiveTurnState;
+  showReasoning: boolean;
+  outputLines: number;
+}) {
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box>
@@ -232,7 +291,12 @@ function ActiveTurn({ turn, showReasoning }: { turn: ActiveTurnState; showReason
       />
       {turn.text.length > 0 && <Text>{turn.text}</Text>}
       {turn.toolCalls.map((c, i) => (
-        <ToolCallView key={c.id} call={c} isActive={i === turn.toolCalls.length - 1} />
+        <ToolCallView
+          key={c.id}
+          call={c}
+          isActive={i === turn.toolCalls.length - 1}
+          outputLines={outputLines}
+        />
       ))}
     </Box>
   );
@@ -537,10 +601,19 @@ function App({
       )}
 
       <Static items={completed}>
-        {(turn) => <CompletedTurnView key={turn.id} turn={turn} showReasoning={config.showReasoning} />}
+        {(turn) => (
+          <CompletedTurnView
+            key={turn.id}
+            turn={turn}
+            showReasoning={config.showReasoning}
+            outputLines={config.outputLines}
+          />
+        )}
       </Static>
 
-      {active !== null && <ActiveTurn turn={active} showReasoning={config.showReasoning} />}
+      {active !== null && (
+        <ActiveTurn turn={active} showReasoning={config.showReasoning} outputLines={config.outputLines} />
+      )}
 
       {phase === "error" && (
         <Box marginBottom={1}>
