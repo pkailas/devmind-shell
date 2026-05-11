@@ -101,7 +101,7 @@ try {
 
     # Compile to a single Windows x64 executable.
     $shellExe = Join-Path $stageDir 'devmind.exe'
-    & bun build --compile --target=bun-windows-x64 --external react-devtools-core .\src\index.tsx --outfile $shellExe
+    & bun build --compile --target=bun-windows-x64 .\src\index.tsx --outfile $shellExe
     if ($LASTEXITCODE -ne 0) { throw "bun build --compile failed." }
     if (-not (Test-Path $shellExe)) { throw "Expected $shellExe was not produced." }
 
