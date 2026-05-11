@@ -88,9 +88,20 @@ try {
     & bun install
     if ($LASTEXITCODE -ne 0) { throw "bun install failed." }
 
+    # Reinstall the react-devtools-core stub after bun install.
+    # bun install wipes node_modules, so the stub must be placed here, between
+    # install and build. The stub silences an ENOENT that Ink triggers at bundle
+    # time by eagerly requiring the package (vadimdemedes/ink#650). The real
+    # package is never needed in production because isDev() always returns false.
+    $stubSource = Join-Path $scriptDir 'stubs\react-devtools-core'
+    $stubTarget = Join-Path $ShellRepo 'node_modules\react-devtools-core'
+    if (Test-Path $stubTarget) { Remove-Item -Recurse -Force $stubTarget }
+    Copy-Item -Recurse $stubSource $stubTarget
+    Write-Host "       Stub installed: react-devtools-core"
+
     # Compile to a single Windows x64 executable.
     $shellExe = Join-Path $stageDir 'devmind.exe'
-    & bun build --compile --target=bun-windows-x64 .\src\index.tsx --outfile $shellExe
+    & bun build --compile --target=bun-windows-x64 --external react-devtools-core .\src\index.tsx --outfile $shellExe
     if ($LASTEXITCODE -ne 0) { throw "bun build --compile failed." }
     if (-not (Test-Path $shellExe)) { throw "Expected $shellExe was not produced." }
 
