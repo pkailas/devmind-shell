@@ -51,7 +51,7 @@ Priority over config file. All are optional; built-in defaults shown.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DEVMIND_BASE_URL` | `http://10.0.0.15:8080/v1` | OpenAI-compatible endpoint base URL |
+| `DEVMIND_BASE_URL` | `http://127.0.0.1:1234/v1` | OpenAI-compatible endpoint base URL |
 | `DEVMIND_API_KEY` | `lm-studio` | Bearer token sent in `Authorization` header |
 | `DEVMIND_MODEL` | `G:\models\GEMMA4\google_gemma-4-31B-it-Q8_0.gguf` | Model ID passed in chat completion requests |
 | `DEVMIND_MCP_SERVER_PATH` | *(resolved via chain — see §4)* | Absolute path to `DevMind.McpServer.exe` |
@@ -64,7 +64,7 @@ Priority over config file. All are optional; built-in defaults shown.
 **PowerShell set syntax**:
 ```powershell
 $env:DEVMIND_MCP_SERVER_PATH = "C:/path/to/DevMind.McpServer.exe"
-$env:DEVMIND_BASE_URL = "http://10.0.0.15:8080/v1"
+$env:DEVMIND_BASE_URL = "http://127.0.0.1:1234/v1"
 ```
 
 ---
@@ -87,7 +87,7 @@ All fields optional. Env vars override config file values.
 
 ```json
 {
-  "baseURL":          "http://10.0.0.15:8080/v1",
+  "baseURL":          "http://127.0.0.1:1234/v1",
   "apiKey":           "lm-studio",
   "model":            "<model-id>",
   "mcpServerPath":    "C:/path/to/DevMind.McpServer.exe",

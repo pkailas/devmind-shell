@@ -171,7 +171,7 @@ Write-Host "Open a new terminal and run:"
 Write-Host "    devmind" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "Configuration (optional):"
-Write-Host "    Set DEVMIND_BASE_URL  to your LLM endpoint  (default: http://10.0.0.15:8080/v1)"
+Write-Host "    Set DEVMIND_BASE_URL  to your LLM endpoint  (default: http://127.0.0.1:1234/v1)"
 Write-Host "    Set DEVMIND_API_KEY   to your API key       (default: lm-studio)"
 Write-Host "    Set DEVMIND_MODEL     to your model id"
 Write-Host ""

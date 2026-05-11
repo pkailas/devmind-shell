@@ -21,7 +21,6 @@ Owned by **iOnline Consulting LLC**. Companion repo to [DevMind](https://github.
 
 **Remotes**:
 - GitHub (public, primary): https://github.com/pkailas/devmind-shell
-- Synology NAS (private mirror): `pkailas@vard-nas:/volume1/GIT/devmind-shell.git`
 
 A TypeScript/Ink terminal application that:
 
@@ -55,7 +54,7 @@ bun install
 export DEVMIND_MCP_SERVER_PATH="C:/path/to/DevMind.McpServer.exe"
 
 # Optional: configure the LLM endpoint.
-export DEVMIND_BASE_URL="http://10.0.0.15:8080/v1"
+export DEVMIND_BASE_URL="http://127.0.0.1:1234/v1"
 export DEVMIND_MODEL="<your model id>"
 
 bun run dev     # interactive agentic shell
@@ -75,9 +74,9 @@ Three layers, highest priority first:
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `DEVMIND_BASE_URL` | OpenAI-compatible endpoint URL | `http://10.0.0.15:8080/v1` |
+| `DEVMIND_BASE_URL` | OpenAI-compatible endpoint URL | `http://127.0.0.1:1234/v1` |
 | `DEVMIND_API_KEY` | API key (`lm-studio` works for local llama-server) | `lm-studio` |
-| `DEVMIND_MODEL` | Model id passed in chat completion requests | `G:\models\GEMMA4\google_gemma-4-31B-it-Q8_0.gguf` |
+| `DEVMIND_MODEL` | Model id passed in chat completion requests | `your-model-id-here` |
 | `DEVMIND_MCP_SERVER_PATH` | Absolute path to `DevMind.McpServer.exe` | (resolved via path-resolution chain) |
 | `DEVMIND_TOOL_TIMEOUT_MS` | Non-streaming tool-call timeout | `30000` |
 | `DEVMIND_CONFIG_PATH` | Override config-file location | (platform default) |
@@ -96,7 +95,7 @@ Schema (all fields optional):
 
 ```json
 {
-  "baseURL": "http://10.0.0.15:8080/v1",
+  "baseURL": "http://127.0.0.1:1234/v1",
   "apiKey": "lm-studio",
   "model": "your-model-id",
   "mcpServerPath": "C:/path/to/DevMind.McpServer.exe",

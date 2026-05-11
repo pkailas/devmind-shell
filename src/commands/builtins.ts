@@ -1,4 +1,4 @@
-// File: src/commands/builtins.ts  v1.1
+// File: src/commands/builtins.ts  v1.6
 // Copyright (c) iOnline Consulting LLC. All rights reserved.
 //
 // Initial five slash commands. Each is a small, isolated handler. Adding
@@ -15,6 +15,7 @@
 // naturally as error results.
 
 import { DEPTH_CAP_RANGE, OUTPUT_LINES_RANGE } from "../util/config.js";
+import { deleteCurrentSessionLog } from "../util/trainingLogger.js";
 import { persistConfigField } from "../util/configPersist.js";
 import {
   registerCommand,
@@ -22,6 +23,8 @@ import {
   type CommandContext,
   type CommandResult,
 } from "./registry.js";
+import fs from "node:fs";
+import path from "node:path";
 
 // ── /reasoning on|off ───────────────────────────────────────────────────────
 
@@ -29,6 +32,9 @@ async function reasoningHandler(
   args: string[],
   ctx: CommandContext,
 ): Promise<CommandResult> {
+  if (args.length === 0) {
+    return { message: `Reasoning display: ${ctx.config.showReasoning ? "on" : "off"}` };
+  }
   const arg = args[0]?.toLowerCase();
   if (arg !== "on" && arg !== "off") {
     return { message: "Usage: /reasoning on|off", isError: true };
@@ -118,6 +124,7 @@ async function clearHandler(
   ctx: CommandContext,
 ): Promise<CommandResult> {
   ctx.resetConversation();
+  ctx.resetSessionTokens?.();
   return { message: "Conversation cleared." };
 }
 
@@ -141,15 +148,27 @@ async function rulesHandler(
   args: string[],
   ctx: CommandContext,
 ): Promise<CommandResult> {
-  const rules = args[0] ?? "";
-  ctx.setConfig({ ...ctx.config, behavioralRules: rules });
-  await persistConfigField("behavioralRules", rules);
+  if (args.length === 0) {
+    if (!ctx.config.behavioralRules) {
+      return { message: "No behavioral rules set." };
+    }
+    return { message: `Current behavioral rules:\n${ctx.config.behavioralRules}` };
+  }
+ const arg = args[0];
+  if (arg === undefined) {
+    // Defensive — args.length > 0 but noUncheckedIndexedAccess.
+    return { message: "No argument provided." };
+  }
+  if (arg === "clear") {
+    ctx.setConfig({ ...ctx.config, behavioralRules: "" });
+    await persistConfigField("behavioralRules", "");
+    ctx.resetConversation();
+    return { message: "Behavioral rules cleared. Conversation reset." };
+  }
+  ctx.setConfig({ ...ctx.config, behavioralRules: arg });
+  await persistConfigField("behavioralRules", arg);
   ctx.resetConversation();
-  return {
-    message: rules
-      ? `Behavioral rules updated. Conversation reset.`
-      : "Behavioral rules cleared. Conversation reset.",
-  };
+  return { message: "Behavioral rules updated. Conversation reset." };
 }
 
 // ── /help ───────────────────────────────────────────────────────────────────
@@ -163,6 +182,48 @@ async function helpHandler(): Promise<CommandResult> {
     lines.push(`  ${c.usage.padEnd(width)}  ${c.description}`);
   }
   return { message: lines.join("\n") };
+}
+
+// ── /training-delete-last ───────────────────────────────────────────────────────
+
+async function trainingDeleteLastHandler(
+  _args: string[],
+  _ctx: CommandContext,
+): Promise<CommandResult> {
+  try {
+    deleteCurrentSessionLog();
+    return { message: "Current session training log deleted." };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { message: `Error deleting training log: ${msg}`, isError: true };
+  }
+}
+
+// ── /dir [path] ──────────────────────────────────────────────────────────────────
+
+async function dirHandler(
+  args: string[],
+  ctx: CommandContext,
+): Promise<CommandResult> {
+ if (args.length === 0) {
+    return { message: `Current working directory: ${process.cwd()}` };
+  }
+  const arg = args[0];
+  let newDir: string;
+  try {
+    // Resolve relative to current process cwd (which is the current shell cwd)
+    newDir = path.resolve(process.cwd(), arg ?? "");
+    const stats = fs.statSync(newDir);
+    if (!stats.isDirectory()) {
+      return { message: `Error: The path "${arg}" is not a directory.`, isError: true };
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { message: `Error: The path "${arg}" could not be resolved: ${msg}`, isError: true };
+  }
+
+  await ctx.setWorkingDir(newDir);
+  return { message: `Working directory changed to: ${newDir}. MCP server reconnected.` };
 }
 
 // ── Registration ────────────────────────────────────────────────────────────
@@ -206,11 +267,23 @@ export function registerBuiltinCommands(): void {
     "/system_prompt",
     systemPromptHandler,
   );
-  registerCommand(
+ registerCommand(
     "/rules",
-    "Set behavioral rules (persisted) and reset conversation",
-    "/rules [text]",
+    "Show, set, or clear behavioral rules (persisted; setting or clearing resets the conversation)",
+    "/rules [text|clear]",
     rulesHandler,
+  );
+  registerCommand(
+    "/training-delete-last",
+    "Delete the training log for the current session",
+    "/training-delete-last",
+    trainingDeleteLastHandler,
+  );
+  registerCommand(
+    "/dir",
+    "Change working directory and reconnect MCP server",
+    "/dir [path]",
+    dirHandler,
   );
   registerCommand(
     "/help",

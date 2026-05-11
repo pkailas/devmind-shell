@@ -16,9 +16,10 @@ const tools = await mcp.listTools();
 console.log(`[setup] McpServer ready, ${tools.length} tools`);
 
 const streaming = new StreamingClient({
-  baseURL: "http://10.0.0.15:8080/v1",
+  baseURL: "http://127.0.0.1:1234/v1",
   apiKey: "lm-studio",
-  model: "G:\\models\\GEMMA4\\google_gemma-4-31B-it-Q8_0.gguf",
+  model: "your-model-id-here",
+  maxOutputTokens: 16384,
 });
 
 const SYSTEM_PROMPT =

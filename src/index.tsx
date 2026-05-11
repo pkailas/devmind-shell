@@ -1,4 +1,4 @@
-// File: src/index.tsx  v4.5
+// File: src/index.tsx  v4.15
 // Copyright (c) iOnline Consulting LLC. All rights reserved.
 //
 // Phase C interactive shell: agentic loop with tool dispatch.
@@ -12,19 +12,21 @@
 // Multi-turn history accumulates in the AgenticLoop instance — turns
 // reuse the same loop instance, so prior tool results stay in context.
 //
-// Cancel: Ctrl+C exits the app (process.on('SIGINT')); Esc aborts the
-// current turn via the AbortController shared with AgenticLoop.runTurn().
+// Cancel: Esc or Ctrl+C aborts the current turn. Ctrl+C twice quickly while idle exits the app.
 
 import React, { useState, useEffect, useRef } from "react";
 import { render, Text, Box, Static, useApp, useInput } from "ink";
 import { McpClient, type ToolInfo } from "./mcp/McpClient.js";
 import { StreamingClient } from "./llm/StreamingClient.js";
 import { AgenticLoop, type LoopEvent } from "./loop/AgenticLoop.js";
-import { installSignalHandlers, onShutdown } from "./util/lifecycle.js";
+import { installSignalHandlers, onShutdown, setRunningState, onCancelTurn } from "./util/lifecycle.js";
 import { resolveConfig, describeConfig, type Config } from "./util/config.js";
 import { loadProjectContext, type LoadedContextFile } from "./util/projectContext.js";
 import { assembleSystemPrompt } from "./util/systemPrompt.js";
 import { probeLlamaServer, writeStartupError } from "./util/startup.js";
+import { traceEvent, traceShutdown } from "./util/trace.js";
+import fs from "node:fs";
+import path from "node:path";
 import { theme } from "./ui/theme.js";
 import {
   dispatchSlashCommand,
@@ -32,6 +34,42 @@ import {
   type CommandContext,
 } from "./commands/registry.js";
 import { registerBuiltinCommands } from "./commands/builtins.js";
+
+const REDACT_PATTERNS: RegExp[] = [
+  /_KEY$/i,
+  /_TOKEN$/i,
+  /_SECRET$/i,
+  /_PASSWORD$/i,
+  /^ANTHROPIC_/i,
+  /^OPENAI_/i,
+  /^OPENROUTER_/i,
+];
+
+function redactEnv(env: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(env)) {
+    out[k] = REDACT_PATTERNS.some((rx) => rx.test(k)) ? "[REDACTED]" : v;
+  }
+  return out;
+}
+
+function redactConfigForTrace(c: Config): Record<string, unknown> {
+  return {
+    baseURL: c.baseURL,
+    apiKey: "[REDACTED]",
+    model: c.model,
+    mcpServerPath: c.mcpServerPath,
+    toolTimeoutMs: c.toolTimeoutMs,
+    behavioralRules: c.behavioralRules,
+    showReasoning: c.showReasoning,
+    depthCap: c.depthCap,
+    outputLines: c.outputLines,
+    traceEnabled: c.traceEnabled,
+    traceDir: c.traceDir,
+    traceLevel: c.traceLevel,
+    configFileLoaded: c.configFileLoaded,
+  };
+}
 
 const PROGRESS_TOOLS = new Set(["run_shell", "run_build", "run_tests"]);
 // Per-line character cap inside summarizeResult. Each visible line beyond
@@ -81,6 +119,8 @@ type ActiveTurnState = {
   toolCalls: ToolCallEntry[];
   currentRound: number;
   startedAt: number;
+  inputTokens: number;
+  outputTokens: number;
 };
 
 // ── Sub-components ──────────────────────────────────────────────────────────
@@ -220,10 +260,10 @@ function CompletedAgenticTurnView({
         <Text>{turn.userText}</Text>
       </Box>
       <ReasoningBlock text={turn.reasoning} expanded={false} streaming={false} showReasoning={showReasoning} />
-      {turn.text.length > 0 && <Text>{turn.text}</Text>}
       {turn.toolCalls.map((c) => (
         <ToolCallView key={c.id} call={c} isActive={false} outputLines={outputLines} />
       ))}
+      {turn.text.length > 0 && <Text>{turn.text}</Text>}
       {turn.doneReason === "task_done" && turn.doneSummary && (
         <Text color={theme.success}>✓ {turn.doneSummary}</Text>
       )}
@@ -289,7 +329,6 @@ function ActiveTurn({
         streaming={turn.text.length === 0 && turn.toolCalls.length === 0}
         showReasoning={showReasoning}
       />
-      {turn.text.length > 0 && <Text>{turn.text}</Text>}
       {turn.toolCalls.map((c, i) => (
         <ToolCallView
           key={c.id}
@@ -298,6 +337,7 @@ function ActiveTurn({
           outputLines={outputLines}
         />
       ))}
+      {turn.text.length > 0 && <Text>{turn.text}</Text>}
     </Box>
   );
 }
@@ -339,12 +379,16 @@ function StatusBar({
   elapsedMs,
   toolsCount,
   showReasoning,
+  sessionInputTokens,
+  sessionOutputTokens,
 }: {
   phase: Phase;
   active: ActiveTurnState | null;
   elapsedMs: number;
   toolsCount: number;
   showReasoning: boolean;
+  sessionInputTokens: number;
+  sessionOutputTokens: number;
 }) {
   if (phase === "streaming" && active) {
     const lastCall = active.toolCalls[active.toolCalls.length - 1];
@@ -376,7 +420,7 @@ function StatusBar({
       <Text>
         <Spinner /><Text color={theme.pending}> Generating... </Text>
         <Text dimColor>
-          ({(elapsedMs / 1000).toFixed(1)}s, round {active.currentRound})  [Esc to cancel]
+          ({(elapsedMs / 1000).toFixed(1)}s, round {active.currentRound}, {active.inputTokens.toLocaleString()} in / {active.outputTokens.toLocaleString()} out)  [Esc to cancel]
         </Text>
       </Text>
     );
@@ -385,12 +429,19 @@ function StatusBar({
     return <Text color={theme.error}>✗ Error</Text>;
   }
   return (
-    <Text>
-      <Text color={theme.success}>○ Ready </Text>
-      <Text dimColor>
-        ({toolsCount} tools available · Enter to send · Shift+Enter newline · Ctrl+C to exit)
+    <Box flexDirection="row" justifyContent="space-between">
+      <Text>
+        <Text color={theme.success}>○ Ready </Text>
+        <Text dimColor>
+          ({toolsCount} tools available · Enter to send · Shift+Enter newline · Ctrl+C twice to exit)
+        </Text>
       </Text>
-    </Text>
+      {(sessionInputTokens > 0 || sessionOutputTokens > 0) && (
+        <Text dimColor>
+          {sessionInputTokens.toLocaleString()} in / {sessionOutputTokens.toLocaleString()} out
+        </Text>
+      )}
+    </Box>
   );
 }
 
@@ -422,6 +473,8 @@ function App({
   // the CommandContext; persistence to shell.json happens inside the
   // handler. See src/commands/builtins.ts.
   const [config, setConfig] = useState<Config>(initialConfig);
+  const [sessionInputTokens, setSessionInputTokens] = useState(0);
+  const [sessionOutputTokens, setSessionOutputTokens] = useState(0);
   // Latest config in a ref so closures (startTurn, command context) read
   // the current value without re-binding. React state alone would close
   // over a stale config inside the async runTurn loop.
@@ -431,9 +484,14 @@ function App({
   }, [config]);
   const abortRef = useRef<AbortController | null>(null);
   const turnIdRef = useRef(0);
+  // No lastInputTimeRef needed as Ink delivers pastes as single char events.
 
-  useInput((char, key) => {
-    if (phase === "input") {
+    useInput((char, key) => {
+      if (key.ctrl && char === 'c') {
+        process.emit('SIGINT');
+        return;
+      }
+      if (phase === "input") {
       if (key.return && !key.shift) {
         const text = buffer.trim();
         if (text.length === 0) return;
@@ -453,7 +511,8 @@ function App({
         return;
       }
       if (char && !key.ctrl && !key.meta) {
-        setBuffer((s) => s + char);
+        const normalized = char.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        setBuffer((s) => s + normalized);
       }
       return;
     }
@@ -466,6 +525,7 @@ function App({
   // (installed in the bootstrap before render()) drive cleanup; this
   // mount-time hook just hands them the abort + exit functions.
   useEffect(() => {
+    onCancelTurn(() => abortRef.current?.abort());
     onShutdown(() => {
       abortRef.current?.abort();
     });
@@ -475,6 +535,10 @@ function App({
       await new Promise((r) => setTimeout(r, 50));
     });
   }, [exit]);
+
+  useEffect(() => {
+    setRunningState(phase === "streaming");
+  }, [phase]);
 
   useEffect(() => {
     if (phase !== "streaming" || active === null) return;
@@ -493,6 +557,8 @@ function App({
       toolCalls: [],
       currentRound: 0,
       startedAt,
+      inputTokens: 0,
+      outputTokens: 0,
     };
     setActive(cur);
     setPhase("streaming");
@@ -522,6 +588,8 @@ function App({
               errorMessage: ev.errorMessage,
             };
             setCompleted((c) => [...c, completedTurn]);
+            setSessionInputTokens((prev) => prev + cur.inputTokens);
+            setSessionOutputTokens((prev) => prev + cur.outputTokens);
             setActive(null);
             if (ev.reason === "error") {
               setErrorText(ev.errorMessage ?? "(unknown)");
@@ -574,6 +642,14 @@ function App({
           config: configRef.current,
           projectContext,
         }),
+       setWorkingDir: async (newDir) => {
+         cwd = newDir;
+         await mcp.reconnect(newDir);
+       },
+       resetSessionTokens: () => {
+         setSessionInputTokens(0);
+         setSessionOutputTokens(0);
+       },
     };
     const result = await dispatchSlashCommand(userText, ctx);
     const completedTurn: CompletedCommandTurn = {
@@ -622,7 +698,15 @@ function App({
       )}
 
       <InputBox buffer={buffer} active={phase === "input"} />
-      <StatusBar phase={phase} active={active} elapsedMs={elapsedMs} toolsCount={toolsCount} showReasoning={config.showReasoning} />
+      <StatusBar 
+        phase={phase} 
+        active={active} 
+        elapsedMs={elapsedMs} 
+        toolsCount={toolsCount} 
+        showReasoning={config.showReasoning} 
+        sessionInputTokens={sessionInputTokens}
+        sessionOutputTokens={sessionOutputTokens}
+      />
     </Box>
   );
 }
@@ -632,10 +716,12 @@ function applyEvent(turn: ActiveTurnState, ev: LoopEvent): ActiveTurnState {
   switch (ev.type) {
     case "round_started":
       return { ...turn, currentRound: ev.round };
+    case "round_tokens":
+      return { ...turn, inputTokens: ev.inputTokens, outputTokens: 0 };
     case "reasoning_delta":
-      return { ...turn, reasoning: turn.reasoning + ev.delta };
+      return { ...turn, reasoning: turn.reasoning + ev.delta, outputTokens: turn.outputTokens + Math.ceil(ev.delta.length / 4) };
     case "text_delta":
-      return { ...turn, text: turn.text + ev.delta };
+      return { ...turn, text: turn.text + ev.delta, outputTokens: turn.outputTokens + Math.ceil(ev.delta.length / 4) };
     case "tool_call_dispatch": {
       const entry: ToolCallEntry = {
         id: ev.id,
@@ -665,6 +751,8 @@ function applyEvent(turn: ActiveTurnState, ev: LoopEvent): ActiveTurnState {
       // happens before the user message goes in, and it's diagnostic.
       // (A future banner notification could surface this.)
       return turn;
+    case "round_usage":
+      return { ...turn, inputTokens: ev.promptTokens, outputTokens: ev.completionTokens };
     case "turn_complete":
       return turn;
   }
@@ -683,8 +771,28 @@ try {
   writeStartupError("Configuration error", [
     e instanceof Error ? e.message : String(e),
   ]);
+  traceShutdown(2);
   process.exit(2);
 }
+
+traceEvent("info", "shell.startup", {
+  argv: process.argv,
+  cwd: process.cwd(),
+  platform: process.platform,
+  arch: process.arch,
+  bun_version: process.versions.bun ?? null,
+  node_version: process.versions.node ?? null,
+  is_tty: {
+    stdin:  process.stdin.isTTY  ?? false,
+    stdout: process.stdout.isTTY ?? false,
+    stderr: process.stderr.isTTY ?? false,
+  },
+  config: redactConfigForTrace(config),
+});
+
+traceEvent("debug", "shell.startup.env", {
+  env: redactEnv(process.env as Record<string, string>),
+});
 
 // Pre-flight: llama-server reachability. Don't abort on failure — the
 // user might know the server is starting up — but warn loudly so they
@@ -701,13 +809,33 @@ if (llamaErr !== null) {
   ]);
 }
 
-const cwd = process.cwd();
+let cwd = process.cwd();
+const dirArgIndex = process.argv.indexOf("--dir");
+const rawPath = process.argv[dirArgIndex + 1];
+if (dirArgIndex !== -1 && rawPath) {
+  cwd = path.resolve(process.cwd(), rawPath);
+  try {
+    const stats = fs.statSync(cwd);
+    if (!stats.isDirectory()) {
+      console.error(`[DevMindShell] Error: The path "${cwd}" is not a directory.`);
+      process.exit(1);
+    }
+  } catch (e: unknown) {
+    console.error(`[DevMindShell] Error: The path "${cwd}" does not exist or is inaccessible.`);
+    process.exit(1);
+  }
+}
+console.log(`[DevMindShell] Working directory: ${cwd}`);
 const mcp = new McpClient();
 
 // McpServer disconnect runs late in the shutdown sequence so any active
 // tool calls get a chance to abort first.
 onShutdown(async () => {
   await mcp.disconnect();
+});
+
+onShutdown(() => {
+  traceShutdown(0);
 });
 
 let tools: ToolInfo[];
@@ -725,6 +853,7 @@ try {
     "  - Set DEVMIND_MCP_SERVER_PATH=<absolute path>",
     "  - Or build the DevMind sibling repo (Release or Debug, net8.0)",
   ]);
+  traceShutdown(1);
   process.exit(1);
 }
 
@@ -732,6 +861,7 @@ const streaming = new StreamingClient({
   baseURL: config.baseURL,
   apiKey: config.apiKey,
   model: config.model,
+  maxOutputTokens: config.maxOutputTokens,
 });
 
 const projectContext = loadProjectContext(cwd);
@@ -778,8 +908,10 @@ const { waitUntilExit } = render(
     cwd={cwd}
     projectContext={projectContext}
   />,
+  { exitOnCtrlC: false },
 );
 await waitUntilExit();
 // Normal Ink exit path: run shutdown steps too (so McpServer disconnects).
 await mcp.disconnect().catch(() => {});
+traceShutdown(0);
 process.exit(0);

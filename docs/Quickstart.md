@@ -1,4 +1,4 @@
-﻿---
+---
 doc_type: quickstart
 project: DevMindShell
 verified_date: 2026-05-06
@@ -10,7 +10,7 @@ rag_ready: true
 # Quickstart
 
 ## Prerequisites
-- **llama-server**: Running with a model loaded (e.g., Gemma 4) at `http://10.0.0.15:8080/v1`.
+- **llama-server**: Running with a model loaded (e.g., Gemma 4) at `http://127.0.0.1:1234/v1`.
 - **DevMind.McpServer.exe**: Built and available on your system.
 - **Bun**: Version 1.3.13 installed.
 

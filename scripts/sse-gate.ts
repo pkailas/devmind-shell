@@ -24,16 +24,16 @@ const log = (s: string) => {
 };
 
 const client = new OpenAI({
-  baseURL: "http://10.0.0.15:8080/v1",
+  baseURL: "http://127.0.0.1:1234/v1",
   apiKey: "lm-studio",
 });
 
-const MODEL = "G:\\models\\GEMMA4\\google_gemma-4-31B-it-Q8_0.gguf";
+const MODEL = "your-model-id-here";
 
 log(`=== Phase A SSE gate test ===`);
 log(`Date: ${new Date().toISOString()}`);
 log(`Bun: ${typeof Bun !== "undefined" ? Bun.version : "(not Bun)"}`);
-log(`baseURL: http://10.0.0.15:8080/v1`);
+log(`baseURL: http://127.0.0.1:1234/v1`);
 log(`model: ${MODEL}`);
 log(`prompt: "Say hi" with max_tokens=80`);
 log(``);

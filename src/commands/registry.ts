@@ -1,4 +1,4 @@
-// File: src/commands/registry.ts  v1.0
+// File: src/commands/registry.ts  v1.1
 // Copyright (c) iOnline Consulting LLC. All rights reserved.
 //
 // Slash command registry + dispatcher. Hand-written, no dependencies.
@@ -36,6 +36,10 @@ export type CommandContext = {
   resetConversation: () => void;
   /** Returns the SYSTEM_PROMPT string the loop would currently send. */
   getSystemPrompt: () => string;
+  /** Update the working directory and reconnect the MCP server. */
+  setWorkingDir: (dir: string) => Promise<void>;
+  /** Reset cumulative session token counters. */
+  resetSessionTokens?: () => void;
 };
 
 export type CommandResult = {

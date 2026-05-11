@@ -1,4 +1,4 @@
-// File: src/llm/CompletionClient.ts  v1.0
+// File: src/llm/CompletionClient.ts  v1.2
 // Copyright (c) iOnline Consulting LLC. All rights reserved.
 //
 // Thin wrapper around the openai npm package against an OpenAI-compatible
@@ -36,10 +36,12 @@ export type CompletionResult = {
 export class CompletionClient {
   private readonly _client: OpenAI;
   private readonly _model: string;
+  private readonly _maxOutputTokens: number;
 
-  constructor(opts: { baseURL: string; apiKey: string; model: string }) {
+  constructor(opts: { baseURL: string; apiKey: string; model: string; maxOutputTokens: number }) {
     this._client = new OpenAI({ baseURL: opts.baseURL, apiKey: opts.apiKey });
     this._model = opts.model;
+    this._maxOutputTokens = opts.maxOutputTokens;
   }
 
   /** Non-streaming chat completion. Phase A interface. */
@@ -50,7 +52,7 @@ export class CompletionClient {
     const response = await this._client.chat.completions.create({
       model: this._model,
       messages,
-      max_tokens: opts.maxTokens ?? 512,
+max_tokens: opts.maxTokens ?? this._maxOutputTokens,
       temperature: opts.temperature ?? 0.0,
       stream: false,
     });

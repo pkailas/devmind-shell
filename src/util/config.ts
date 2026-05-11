@@ -1,4 +1,4 @@
-// File: src/util/config.ts  v1.4
+// File: src/util/config.ts  v1.9
 // Copyright (c) iOnline Consulting LLC. All rights reserved.
 //
 // Configuration resolution: env vars > config file > defaults.
@@ -43,15 +43,33 @@
 //                                everything). Out-of-range or non-integer
 //                                values fall through to file/default
 //                                (default 10)
+//   DEVMIND_TRACE_ENABLED     — "true"/"false" (case-insensitive); when
+//                                true, every run writes a JSONL trace file
+//                                to traceDir. Default "false".
+//   DEVMIND_TRACE_DIR         — absolute path to the trace directory.
+//                                Created if missing; hard-fails at startup
+//                                if path exists but is unwritable. Defaults
+//                                to <DevMindShell>/.dm-trace/ (resolved
+//                                relative to this module's location).
+//   DEVMIND_TRACE_LEVEL       — "info" or "debug" (case-insensitive);
+//                                filter threshold for trace events.
+//                                "info" writes info events only; "debug"
+//                                writes both. Default "info". Out-of-range
+//                                values fall through to file/default.
+//   DEVMIND_MAX_OUTPUT_TOKENS — integer in 1024..131072; max_tokens sent
+//                                to the LLM on each chat.completions call.
+//                                Out-of-range values are clamped to the
+//                                nearest bound with a console warning.
+//                                Default 16384.
 
 import { homedir, platform } from "os";
 import { join, resolve, dirname, isAbsolute } from "path";
 import { existsSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
 
-const DEFAULT_BASE_URL = "http://10.0.0.15:8080/v1";
+const DEFAULT_BASE_URL = "http://127.0.0.1:1234/v1";
 const DEFAULT_API_KEY = "lm-studio";
-const DEFAULT_MODEL = "G:\\models\\GEMMA4\\google_gemma-4-31B-it-Q8_0.gguf";
+const DEFAULT_MODEL = "your-model-id-here";
 const DEFAULT_TOOL_TIMEOUT_MS = 30_000;
 const DEFAULT_DEPTH_CAP = 10;
 const DEPTH_CAP_MIN = 1;
@@ -59,6 +77,9 @@ const DEPTH_CAP_MAX = 100;
 const DEFAULT_OUTPUT_LINES = 10;
 const OUTPUT_LINES_MIN = 0;
 const OUTPUT_LINES_MAX = 100_000;
+const DEFAULT_MAX_OUTPUT_TOKENS = 16384;
+const MAX_OUTPUT_TOKENS_MIN = 1024;
+const MAX_OUTPUT_TOKENS_MAX = 131_072;
 
 export type Config = {
   baseURL: string;
@@ -70,10 +91,18 @@ export type Config = {
   showReasoning: boolean;
   depthCap: number;
   outputLines: number;
+  maxOutputTokens: number;
+  traceEnabled: boolean;
+  traceDir: string;        // always materialized; never null in Config
+  traceLevel: "info" | "debug";
+  trainingLogEnabled: boolean;
+  trainingLogDir: string;
   configFileLoaded: string | null; // for diagnostics
 };
 
 type ConfigFile = Partial<{
+  trainingLogEnabled?: boolean;
+  trainingLogDir?: string;
   baseURL: string;
   apiKey: string;
   model: string;
@@ -83,6 +112,10 @@ type ConfigFile = Partial<{
   showReasoning: boolean;
   depthCap: number;
   outputLines: number;
+  maxOutputTokens: number;
+  traceEnabled?: boolean;
+  traceDir?: string;
+  traceLevel?: "info" | "debug";
 }>;
 
 /** Default config-file path for the current platform.
@@ -141,10 +174,34 @@ export function resolveConfig(): Config {
   const behavioralRules = process.env.DEVMIND_BEHAVIORAL_RULES ?? file?.behavioralRules ?? "";
   const showReasoning = parseBooleanEnv(process.env.DEVMIND_SHOW_REASONING) ?? file?.showReasoning ?? true;
   const depthCap = parseDepthCap(process.env.DEVMIND_DEPTH_CAP) ?? validateDepthCap(file?.depthCap) ?? DEFAULT_DEPTH_CAP;
-  const outputLines =
+ const outputLines =
     parseOutputLines(process.env.DEVMIND_OUTPUT_LINES) ??
     validateOutputLines(file?.outputLines) ??
     DEFAULT_OUTPUT_LINES;
+
+  const maxOutputTokens =
+    parseMaxOutputTokens(process.env.DEVMIND_MAX_OUTPUT_TOKENS) ??
+    clampMaxOutputTokens(file?.maxOutputTokens) ??
+    DEFAULT_MAX_OUTPUT_TOKENS;
+
+  const traceEnabled =
+    parseBooleanEnv(process.env.DEVMIND_TRACE_ENABLED) ??
+    file?.traceEnabled ??
+    false;
+
+  const traceDir = resolveTraceDir(file?.traceDir);
+
+  const traceLevel =
+    parseTraceLevel(process.env.DEVMIND_TRACE_LEVEL) ??
+    validateTraceLevel(file?.traceLevel) ??
+    "info";
+
+  const trainingLogEnabled =
+    parseBooleanEnv(process.env.DEVMIND_TRAINING_LOG_ENABLED) ??
+    file?.trainingLogEnabled ??
+    true;
+
+  const trainingLogDir = resolveTrainingLogDir(file?.trainingLogDir);
 
   return {
     baseURL,
@@ -154,8 +211,14 @@ export function resolveConfig(): Config {
     toolTimeoutMs,
     behavioralRules,
     showReasoning,
-    depthCap,
+   depthCap,
     outputLines,
+    maxOutputTokens,
+    traceEnabled,
+    traceDir,
+    traceLevel,
+    trainingLogEnabled,
+    trainingLogDir,
     configFileLoaded: fileLoaded,
   };
 }
@@ -200,6 +263,36 @@ function validateOutputLines(input: number | undefined): number | undefined {
 /** Public range for use by /output-lines validation. 0 is the unlimited sentinel. */
 export const OUTPUT_LINES_RANGE = { min: OUTPUT_LINES_MIN, max: OUTPUT_LINES_MAX } as const;
 
+/** Parse and validate DEVMIND_MAX_OUTPUT_TOKENS. Returns the integer if valid, undefined otherwise. */
+function parseMaxOutputTokens(input: string | undefined): number | undefined {
+  if (input === undefined) return undefined;
+  const n = Number(input);
+  if (!Number.isFinite(n) || !Number.isInteger(n)) return undefined;
+  if (n < MAX_OUTPUT_TOKENS_MIN || n > MAX_OUTPUT_TOKENS_MAX) {
+    console.warn(
+      `[config] DEVMIND_MAX_OUTPUT_TOKENS=${n} is out of range [${MAX_OUTPUT_TOKENS_MIN}..${MAX_OUTPUT_TOKENS_MAX}]; clamping.`,
+    );
+    return n < MAX_OUTPUT_TOKENS_MIN ? MAX_OUTPUT_TOKENS_MIN : MAX_OUTPUT_TOKENS_MAX;
+  }
+  return n;
+}
+
+/** Validate a config-file maxOutputTokens value. Clamps out-of-range values with a warning. */
+function clampMaxOutputTokens(input: number | undefined): number | undefined {
+  if (input === undefined) return undefined;
+  if (!Number.isFinite(input) || !Number.isInteger(input)) return undefined;
+  if (input < MAX_OUTPUT_TOKENS_MIN || input > MAX_OUTPUT_TOKENS_MAX) {
+    console.warn(
+      `[config] maxOutputTokens=${input} is out of range [${MAX_OUTPUT_TOKENS_MIN}..${MAX_OUTPUT_TOKENS_MAX}]; clamping.`,
+    );
+    return input < MAX_OUTPUT_TOKENS_MIN ? MAX_OUTPUT_TOKENS_MIN : MAX_OUTPUT_TOKENS_MAX;
+  }
+  return input;
+}
+
+/** Public range for use by /max-output-tokens validation. */
+export const MAX_OUTPUT_TOKENS_RANGE = { min: MAX_OUTPUT_TOKENS_MIN, max: MAX_OUTPUT_TOKENS_MAX, default: DEFAULT_MAX_OUTPUT_TOKENS } as const;
+
 function parseTimeoutMs(input: string | undefined): number {
   if (input === undefined) return DEFAULT_TOOL_TIMEOUT_MS;
   const n = Number(input);
@@ -216,6 +309,48 @@ function parseBooleanEnv(val: string | undefined): boolean | undefined {
   return undefined;
 }
 
+function parseTraceLevel(val: string | undefined): "info" | "debug" | undefined {
+  if (val === undefined) return undefined;
+  const lower = val.toLowerCase();
+  if (lower === "info") return "info";
+  if (lower === "debug") return "debug";
+  return undefined;
+}
+
+function validateTraceLevel(input: unknown): "info" | "debug" | undefined {
+  if (input === "info" || input === "debug") return input;
+  return undefined;
+}
+
+/** Returns the DevMindShell repo root, resolved relative to this module's location. */
+function shellRoot(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  return resolve(here, "..", "..");
+}
+
+/** Resolve traceDir from env > config file > default. */
+function resolveTraceDir(fromFile: string | undefined): string {
+  const env = process.env.DEVMIND_TRACE_DIR;
+  if (env && env.length > 0) return env;
+  if (fromFile) return isAbsolute(fromFile) ? fromFile : resolve(fromFile);
+  return join(shellRoot(), ".dm-trace");
+}
+
+/** Resolve trainingLogDir from env > config file > default. */
+function resolveTrainingLogDir(fromFile: string | undefined): string {
+  const env = process.env.DEVMIND_TRAINING_LOG_DIR;
+  if (env && env.length > 0) return env;
+  if (fromFile) return isAbsolute(fromFile) ? fromFile : resolve(fromFile);
+
+  const p = platform();
+  if (p === "win32") {
+    const appdata = process.env.APPDATA;
+    if (appdata) return join(appdata, "devmind", "training_logs");
+    return join(homedir(), "AppData", "Roaming", "devmind", "training_logs");
+  }
+  return join(homedir(), ".devmind", "training_logs");
+}
+
 /**
  * McpServer.exe path resolution chain (per discovery doc §7):
  *   1. DEVMIND_MCP_SERVER_PATH env var (absolute path)
@@ -224,7 +359,10 @@ function parseBooleanEnv(val: string | undefined): boolean | undefined {
  *      In dev, both repos clone as siblings. From src/util/, walk up to
  *      DevMindShell root, then over to the DevMind sibling, then into
  *      DevMind.McpServer/bin/{Release,Debug}/net8.0/DevMind.McpServer.exe.
- *      Tries Release first; falls back to Debug.
+      Tries Debug first; falls back to Release. Prefers the build
+      configuration that DevMind's dev workflow produces (Debug).
+      Set DEVMIND_MCP_SERVER_PATH or config.mcpServerPath to pin
+      a specific build.
  *   4. PATH lookup (system command) — not implemented in v1; returns
  *      a clear error if all higher tiers fail.
  *
@@ -245,16 +383,11 @@ function resolveMcpServerPath(fromFile: string | undefined): string {
     if (existsSync(absolute)) return absolute;
   }
 
-  // Adjacent build convention. import.meta.url points at this file
-  // (src/util/config.ts). Walk up to DevMindShell, sideways to DevMind.
-  const here = dirname(fileURLToPath(import.meta.url));
-  // here = .../DevMindShell/src/util  (or .../dist/...)
-  const shellRoot = resolve(here, "..", "..");
-  // siblingDir = .../<parent of DevMindShell>
-  const siblingParent = resolve(shellRoot, "..");
-  const siblingCandidates = [
-    join(siblingParent, "DevMind", "DevMind.McpServer", "bin", "Release", "net8.0", "DevMind.McpServer.exe"),
+  // Adjacent build convention. siblingDir = .../<parent of DevMindShell>
+  const siblingParent = resolve(shellRoot(), "..");
+    const siblingCandidates = [
     join(siblingParent, "DevMind", "DevMind.McpServer", "bin", "Debug", "net8.0", "DevMind.McpServer.exe"),
+    join(siblingParent, "DevMind", "DevMind.McpServer", "bin", "Release", "net8.0", "DevMind.McpServer.exe"),
   ];
   for (const cand of siblingCandidates) {
     tried.push(`adjacent build ${cand}`);
@@ -280,6 +413,11 @@ export function describeConfig(c: Config): string {
     `model:       ${c.model}`,
     `McpServer:   ${c.mcpServerPath}`,
     `timeout:     ${c.toolTimeoutMs}ms (non-streaming tools)`,
+    `max tokens:  ${c.maxOutputTokens}`,
     `config file: ${c.configFileLoaded ?? "(none — using env + defaults)"}`,
+    `trace:       ${c.traceEnabled ? "enabled" : "disabled"}`,
+    `trace dir:   ${c.traceDir}`,
+    `trace level: ${c.traceLevel}`,
+    `training logs: ${c.trainingLogEnabled ? "enabled" : "disabled"} (${c.trainingLogDir})`,
   ].join("\n");
 }

@@ -1,4 +1,4 @@
-// File: src/loop/AgenticLoop.ts  v1.1
+// File: src/loop/AgenticLoop.ts  v1.5
 // Copyright (c) iOnline Consulting LLC. All rights reserved.
 //
 // Multi-round agentic loop: drives the streaming LLM, dispatches tool
@@ -49,6 +49,8 @@ import type {
 import { StreamingClient, type StreamEvent } from "../llm/StreamingClient.js";
 import type { McpClient, ToolInfo, ToolResult } from "../mcp/McpClient.js";
 import { trimContext, type TrimResult } from "./contextBudget.js";
+import { logTurn } from "../util/trainingLogger.js";
+import { resolveConfig } from "../util/config.js";
 
 const DEFAULT_DEPTH_CAP = 10;
 
@@ -73,6 +75,7 @@ const PROGRESS_TOOLS = new Set(["run_shell", "run_build", "run_tests"]);
 
 export type LoopEvent =
   | { type: "round_started"; round: number }
+  | { type: "round_tokens"; inputTokens: number }
   | { type: "reasoning_delta"; delta: string }
   | { type: "text_delta"; delta: string }
   | { type: "tool_call_dispatch"; id: string; name: string; args: unknown }
@@ -85,6 +88,7 @@ export type LoopEvent =
       isError: boolean;
     }
   | { type: "context_trim"; trim: TrimResult }
+  | { type: "round_usage"; promptTokens: number; completionTokens: number }
   | {
       type: "turn_complete";
       reason: "stop" | "task_done" | "error" | "depth_cap" | "abort";
@@ -160,6 +164,8 @@ export class AgenticLoop {
 
     for (let round = 1; round <= depthCap; round++) {
       yield { type: "round_started", round };
+      // TODO: replace heuristic with proper tokenizer (e.g., gpt-tokenizer or sentencepiece) when fine-tune work begins
+      yield { type: "round_tokens", inputTokens: Math.ceil(JSON.stringify(this._messages).length / 4) };
 
       const dispatchedCalls: ChatCompletionMessageToolCall[] = [];
       const toolResults: { tool_call_id: string; content: string }[] = [];
@@ -185,6 +191,8 @@ export class AgenticLoop {
           } else if (ev.type === "content_delta") {
             assistantText += ev.delta;
             yield { type: "text_delta", delta: ev.delta };
+          } else if (ev.type === "usage_report") {
+            yield { type: "round_usage", promptTokens: ev.promptTokens, completionTokens: ev.completionTokens };
           } else if (ev.type === "done") {
             finishReason = ev.finishReason;
             toolCallsAccum = ev.toolCalls;
@@ -195,12 +203,24 @@ export class AgenticLoop {
         }
       } catch (e: unknown) {
         const message = e instanceof Error ? `${e.constructor.name}: ${e.message}` : String(e);
+        logTurn({
+          model: resolveConfig().model,
+          messages: [...this._messages],
+          outcome: "error",
+          target_index: this.lastAssistantIndex(),
+        });
         yield { type: "turn_complete", reason: "error", errorMessage: `LLM stream failed: ${message}` };
         return;
       }
 
       // Cancellation
       if (finishReason === "abort") {
+        logTurn({
+          model: resolveConfig().model,
+          messages: [...this._messages],
+          outcome: "abort",
+          target_index: this.lastAssistantIndex(),
+        });
         // Append a minimal assistant message so history is consistent
         if (assistantText.length > 0) {
           this._messages.push({ role: "assistant", content: assistantText });
@@ -211,12 +231,24 @@ export class AgenticLoop {
 
       // Plain text response — turn done
       if (finishReason === "stop") {
+        logTurn({
+          model: resolveConfig().model,
+          messages: [...this._messages],
+          outcome: "finished_without_task_done",
+          target_index: this.lastAssistantIndex(),
+        });
         this._messages.push({ role: "assistant", content: assistantText });
         yield { type: "turn_complete", reason: "stop" };
         return;
       }
 
       if (finishReason !== "tool_calls") {
+        logTurn({
+          model: resolveConfig().model,
+          messages: [...this._messages],
+          outcome: "error",
+          target_index: this.lastAssistantIndex(),
+        });
         yield {
           type: "turn_complete",
           reason: "error",
@@ -278,6 +310,12 @@ export class AgenticLoop {
             content: r.content,
           });
         }
+        logTurn({
+          model: resolveConfig().model,
+          messages: [...this._messages],
+          outcome: "task_done",
+          target_index: this.lastAssistantIndex(),
+        });
         yield { type: "turn_complete", reason: "task_done", summary };
         return;
       }
@@ -473,11 +511,27 @@ export class AgenticLoop {
       // Loop continues — model gets to react to tool results in the next round
     }
 
+    logTurn({
+      model: resolveConfig().model,
+      messages: [...this._messages],
+      outcome: "depth_cap",
+      target_index: this.lastAssistantIndex(),
+    });
     yield {
       type: "turn_complete",
       reason: "depth_cap",
       errorMessage: `Reached ${depthCap} agentic rounds without resolution; aborting turn.`,
     };
+  }
+
+  /** Find the index of the last assistant message in the messages array.
+   *  Returns -1 if no assistant message exists. Replacement for findLastIndex
+   *  which requires an ES2023 target. */
+  private lastAssistantIndex(): number {
+    for (let i = this._messages.length - 1; i >= 0; i--) {
+      if (this._messages[i]?.role === "assistant") return i;
+    }
+    return -1;
   }
 }
 

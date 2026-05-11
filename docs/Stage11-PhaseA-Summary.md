@@ -42,7 +42,7 @@ The repo is currently local-only. Push to the Synology NAS Git host is deferred 
 
 ## Gate result: PASS
 
-**Bun 1.3.13 + openai 6.36.0 + ik_llama.cpp at http://10.0.0.15:8080/v1 streams correctly.**
+**Bun 1.3.13 + openai 6.36.0 + ik_llama.cpp at http://127.0.0.1:1234/v1 streams correctly.**
 
 Verbatim evidence from `scripts/sse-gate-evidence.txt` (re-runnable via `bun run gate`):
 
@@ -50,7 +50,7 @@ Verbatim evidence from `scripts/sse-gate-evidence.txt` (re-runnable via `bun run
 === Phase A SSE gate test ===
 Date: 2026-05-06T11:48:33.855Z
 Bun: 1.3.13
-baseURL: http://10.0.0.15:8080/v1
+baseURL: http://127.0.0.1:1234/v1
 model: G:\models\GEMMA4\google_gemma-4-31B-it-Q8_0.gguf
 prompt: "Say hi" with max_tokens=80
 

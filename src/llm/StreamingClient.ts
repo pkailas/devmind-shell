@@ -1,4 +1,4 @@
-// File: src/llm/StreamingClient.ts  v2.0
+// File: src/llm/StreamingClient.ts  v2.3
 // Copyright (c) iOnline Consulting LLC. All rights reserved.
 //
 // v2.0 (Phase C): tool_calls delta surfacing. Emits per-tool-call events:
@@ -38,6 +38,7 @@ export type StreamEvent =
       type: "usage";
       usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
     }
+  | { type: "usage_report"; promptTokens: number; completionTokens: number }
   | {
       type: "done";
       finishReason: "stop" | "length" | "tool_calls" | "content_filter" | "function_call" | "abort" | null;
@@ -48,10 +49,12 @@ export type StreamEvent =
 export class StreamingClient {
   private readonly _client: OpenAI;
   private readonly _model: string;
+  private readonly _maxOutputTokens: number;
 
-  constructor(opts: { baseURL: string; apiKey: string; model: string }) {
+  constructor(opts: { baseURL: string; apiKey: string; model: string; maxOutputTokens: number }) {
     this._client = new OpenAI({ baseURL: opts.baseURL, apiKey: opts.apiKey });
     this._model = opts.model;
+    this._maxOutputTokens = opts.maxOutputTokens;
   }
 
   /** Async iterable of stream events. Cancel via AbortSignal in opts.signal.
@@ -88,7 +91,7 @@ export class StreamingClient {
       {
         model: this._model,
         messages,
-        max_tokens: opts.maxTokens ?? 4096,
+max_tokens: opts.maxTokens ?? this._maxOutputTokens,
         temperature: opts.temperature ?? 0.0,
         stream: true,
         stream_options: { include_usage: true },
@@ -167,6 +170,14 @@ export class StreamingClient {
               total_tokens: chunk.usage.total_tokens,
             },
           };
+
+          if (chunk.choices.length === 0) {
+            yield {
+              type: "usage_report",
+              promptTokens: chunk.usage.prompt_tokens,
+              completionTokens: chunk.usage.completion_tokens,
+            };
+          }
         }
       }
     } catch (e) {

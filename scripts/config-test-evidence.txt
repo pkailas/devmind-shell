@@ -3,7 +3,7 @@ Date: 2026-05-06T14:16:17.363Z
 
 --- Tier 1: DEVMIND_MCP_SERVER_PATH env var ---
 OK
-endpoint:    http://10.0.0.15:8080/v1
+endpoint:    http://127.0.0.1:1234/v1
 model:       G:\models\GEMMA4\google_gemma-4-31B-it-Q8_0.gguf
 McpServer:   C:/Users/pkailas/source/repos/DevMind/DevMind.McpServer/bin/Debug/net8.0/DevMind.McpServer.exe
 timeout:     30000ms (non-streaming tools)
@@ -33,7 +33,7 @@ Tier 2b result: PASS
 
 --- Tier 3: adjacent-build sibling-repo discovery ---
 OK
-endpoint:    http://10.0.0.15:8080/v1
+endpoint:    http://127.0.0.1:1234/v1
 model:       G:\models\GEMMA4\google_gemma-4-31B-it-Q8_0.gguf
 McpServer:   C:\Users\pkailas\source\repos\DevMind\DevMind.McpServer\bin\Release\net8.0\DevMind.McpServer.exe
 timeout:     30000ms (non-streaming tools)
@@ -43,7 +43,7 @@ Tier 3 result: PASS
 
 --- Tier 4: hard error when no tier resolves ---
 OK
-endpoint:    http://10.0.0.15:8080/v1
+endpoint:    http://127.0.0.1:1234/v1
 model:       G:\models\GEMMA4\google_gemma-4-31B-it-Q8_0.gguf
 McpServer:   C:\Users\pkailas\source\repos\DevMind\DevMind.McpServer\bin\Release\net8.0\DevMind.McpServer.exe
 timeout:     30000ms (non-streaming tools)

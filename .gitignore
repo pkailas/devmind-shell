@@ -3,3 +3,13 @@ dist/
 *.js.map
 .env
 .DS_Store
+
+# Local dev notes — never publish
+CLAUDE.md
+
+# Runtime artifacts — never publish
+.dm-trace/
+.claude/
+input-debug.log
+node_test.txt
+version.txt
