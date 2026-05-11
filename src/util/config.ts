@@ -47,10 +47,10 @@
 //                                true, every run writes a JSONL trace file
 //                                to traceDir. Default "false".
 //   DEVMIND_TRACE_DIR         — absolute path to the trace directory.
-//                                Created if missing; hard-fails at startup
-//                                if path exists but is unwritable. Defaults
-//                                to <DevMindShell>/.dm-trace/ (resolved
-//                                relative to this module's location).
+//                                Created if missing. Defaults to
+//                                %LOCALAPPDATA%\devmind\trace (Windows),
+//                                ~/Library/Application Support/devmind/trace (macOS),
+//                                $XDG_DATA_HOME/devmind/trace (Linux).
 //   DEVMIND_TRACE_LEVEL       — "info" or "debug" (case-insensitive);
 //                                filter threshold for trace events.
 //                                "info" writes info events only; "debug"
@@ -333,7 +333,21 @@ function resolveTraceDir(fromFile: string | undefined): string {
   const env = process.env.DEVMIND_TRACE_DIR;
   if (env && env.length > 0) return env;
   if (fromFile) return isAbsolute(fromFile) ? fromFile : resolve(fromFile);
-  return join(shellRoot(), ".dm-trace");
+  // Default: per-user local data dir. LOCALAPPDATA (not APPDATA) because trace
+  // files are machine-local diagnostics, not roaming data. Must not derive from
+  // import.meta.url / __dirname — those become Bun virtual FS paths in a
+  // compiled binary and produce paths like B:\.dm-trace.
+  const p = platform();
+  if (p === "win32") {
+    const local = process.env.LOCALAPPDATA;
+    if (local) return join(local, "devmind", "trace");
+    return join(homedir(), "AppData", "Local", "devmind", "trace");
+  }
+  if (p === "darwin") {
+    return join(homedir(), "Library", "Application Support", "devmind", "trace");
+  }
+  const xdgData = process.env.XDG_DATA_HOME;
+  return join(xdgData ?? join(homedir(), ".local", "share"), "devmind", "trace");
 }
 
 /** Resolve trainingLogDir from env > config file > default. */
@@ -341,14 +355,17 @@ function resolveTrainingLogDir(fromFile: string | undefined): string {
   const env = process.env.DEVMIND_TRAINING_LOG_DIR;
   if (env && env.length > 0) return env;
   if (fromFile) return isAbsolute(fromFile) ? fromFile : resolve(fromFile);
-
   const p = platform();
   if (p === "win32") {
     const appdata = process.env.APPDATA;
     if (appdata) return join(appdata, "devmind", "training_logs");
     return join(homedir(), "AppData", "Roaming", "devmind", "training_logs");
   }
-  return join(homedir(), ".devmind", "training_logs");
+  if (p === "darwin") {
+    return join(homedir(), "Library", "Application Support", "devmind", "training_logs");
+  }
+  const xdgData = process.env.XDG_DATA_HOME;
+  return join(xdgData ?? join(homedir(), ".local", "share"), "devmind", "training_logs");
 }
 
 /**

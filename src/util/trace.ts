@@ -32,6 +32,7 @@ let logPath = "";
 let initTime = 0;
 let dirEnsured = false;
 let shutdownFired = false;
+let writeFailed = false;
 
 function computeRunId(): string {
   const inherited = process.env.DEVMIND_TRACE_RUN_ID;
@@ -59,11 +60,22 @@ function init(): void {
 }
 
 function writeRecord(record: object): void {
-  if (!dirEnsured) {
-    mkdirSync(dirname(logPath), { recursive: true });
-    dirEnsured = true;
+  if (writeFailed) return;
+  try {
+    if (!dirEnsured) {
+      mkdirSync(dirname(logPath), { recursive: true });
+      dirEnsured = true;
+    }
+    appendFileSync(logPath, JSON.stringify(record) + "\n", "utf8");
+  } catch (e) {
+    writeFailed = true;
+    // Suppress stderr during the exit handler — must never throw on shutdown.
+    if (!shutdownFired) {
+      process.stderr.write(
+        `[trace] write failed, disabling trace for this session: ${e instanceof Error ? e.message : String(e)}\n`,
+      );
+    }
   }
-  appendFileSync(logPath, JSON.stringify(record) + "\n", "utf8");
 }
 
 export function traceEvent(

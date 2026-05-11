@@ -34,6 +34,7 @@ let logPath = "";
 let sessionId = "";
 let turnCounter = 0;
 let dirEnsured = false;
+let writeFailed = false;
 
 function computeSessionId(): string {
   const inherited = process.env.DEVMIND_TRACE_RUN_ID;
@@ -67,11 +68,19 @@ export function logTurn(entry: Omit<TrainingTurnEntry, "session_id" | "turn_id" 
   };
 
   if (!logDir) return;
-  if (!dirEnsured) {
-    mkdirSync(dirname(logPath), { recursive: true });
-    dirEnsured = true;
+  if (writeFailed) return;
+  try {
+    if (!dirEnsured) {
+      mkdirSync(dirname(logPath), { recursive: true });
+      dirEnsured = true;
+    }
+    appendFileSync(logPath, JSON.stringify(fullEntry) + "\n", "utf8");
+  } catch (e) {
+    writeFailed = true;
+    process.stderr.write(
+      `[training] write failed, disabling training log for this session: ${e instanceof Error ? e.message : String(e)}\n`,
+    );
   }
-  appendFileSync(logPath, JSON.stringify(fullEntry) + "\n", "utf8");
 }
 
 export function getSessionLogPath(): string | null {
